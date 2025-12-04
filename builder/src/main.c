@@ -6,7 +6,6 @@
 #define WIEN_SCRIPT_PATH "build.wien"
 #define BUFFER_SIZE 1024
 
-// Читает весь файл в выделенную строку (null-terminated)
 char* read_wien_script(const char* path, size_t* out_size) {
     if (!path) {
         fprintf(stderr, "[ERROR] Script path is NULL.\n");
@@ -19,7 +18,7 @@ char* read_wien_script(const char* path, size_t* out_size) {
         return NULL;
     }
 
-    // Определяем размер файла
+    // size buffer
     if (fseek(fp, 0, SEEK_END) != 0) {
         perror("[ERROR] fseek failed");
         fclose(fp);
@@ -33,7 +32,7 @@ char* read_wien_script(const char* path, size_t* out_size) {
     }
     rewind(fp);
 
-    // Выделяем память + 1 для \0
+    // memory + 1 for '\0'
     char* buffer = (char*)malloc((size_t)size + 1);
     if (!buffer) {
         fprintf(stderr, "[ERROR] Out of memory reading '%s'\n", path);
@@ -41,7 +40,7 @@ char* read_wien_script(const char* path, size_t* out_size) {
         return NULL;
     }
 
-    // Читаем
+    // Read
     size_t bytes_read = fread(buffer, 1, (size_t)size, fp);
     if (bytes_read != (size_t)size) {
         fprintf(stderr, "[ERROR] Incomplete read of '%s'\n", path);
@@ -58,7 +57,6 @@ char* read_wien_script(const char* path, size_t* out_size) {
     return buffer;
 }
 
-// Заглушка для будущего парсера
 int parse_and_execute_wien(const char* source, size_t size) {
     if (!source || size == 0) {
         fprintf(stderr, "[ERROR] Empty script provided to parser.\n");
@@ -74,7 +72,7 @@ int parse_and_execute_wien(const char* source, size_t size) {
 }
 
 int main(int argc, char* argv[]) {
-    printf("=== Wien Builder v0.1 ===\n");
+    printf("Wien Builder v0.1n");
     printf("Target script: %s\n", WIEN_SCRIPT_PATH);
 
     size_t script_size = 0;

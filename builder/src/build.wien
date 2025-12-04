@@ -1,25 +1,32 @@
+@builder
 
-; builder start example arhitecture script language
+global Wien
+[BUFFER:1024]
 
-global Cervus
+DATA:
+    variable kernel = "kernel.c";
+    variable cmd_kernel = "gcc -c kernel.c -o kernel.o";
+    variable flags_kernel = "-Wall -O2 -ffreestanding";
 
-variable $src_kernel = {'kernel.c'} => input = {kernel.o}
-variable $ld_kernel = -pthread
-
-func buildAll(Cervus) => {
-    comp[] kernel {
-        cmd = src_kernel + ld_kernel
+    variable kernelArray[] = {
+        cmd = cmd_kernel;
+        flags = flags_kernel;
+        source = kernel;
+        output = "kernel.o";
     }
-    comp[] asm {
-        cmd = ...
 
+    variable bootArray[] = {
+        cmd = "nasm -f elf64 boot.asm -o boot.o";
+        output = "boot.o";
     }
-}
 
-for $file in kernel.c entry.asm memory.c {
-    => print "Tracking: $file"
-}
+Wien:
+    print("Builder start");
 
-.CALL buildAll
+    !build kernelArray, bootArray;
 
-.echo "OS kernel built: kernel.bin"
+    if (build == 1) {
+        print("Success build!");
+    }
+
+    syscall(exit, 0);
