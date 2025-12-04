@@ -1,1 +1,4 @@
 ; comment
+
+global _compile
+
