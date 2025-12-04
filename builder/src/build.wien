@@ -1,0 +1,25 @@
+
+; builder start example arhitecture script language
+
+global Cervus
+
+variable $src_kernel = {'kernel.c'} => input = {kernel.o}
+variable $ld_kernel = -pthread
+
+func buildAll(Cervus) => {
+    comp[] kernel {
+        cmd = src_kernel + ld_kernel
+    }
+    comp[] asm {
+        cmd = ...
+
+    }
+}
+
+for $file in kernel.c entry.asm memory.c {
+    => print "Tracking: $file"
+}
+
+.CALL buildAll
+
+.echo "OS kernel built: kernel.bin"
