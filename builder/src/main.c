@@ -4,11 +4,12 @@
 
 int open_file(const char* filename) {
     if(filename) {perror("file failed open!\n"); return -1;}
-
+    char buffer[256];
     goto read_file;
 
 read_file:
     printf("sucess read file!");
+    
 }
 
 int main(int argc, char* argv[]) {
