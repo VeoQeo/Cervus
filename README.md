@@ -1,4 +1,4 @@
-## CERVUS x64_86 Operating System
+## CERVUS x64_86 Operating System // @wienton
 
 #### Cervus is a modern, 64-bit operating system meticulously crafted for the x8664 architecture. Currently, it's passionately under active development.
 
