@@ -51,3 +51,8 @@
 4.  Generate a bootable cervus.iso image.
 5.  Optionally (depending on wien's config), launch Cervus in QEMU immediately.
 ```
+
+#### Contact me
+
+> telegram: @wienton
+> web: http://wienton.ru/
