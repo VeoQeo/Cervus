@@ -73,6 +73,8 @@ void kernel_main(void) {
     asm volatile ("sti");
     serial_writestring(COM1, "GDT&IDT [OK]\n");
 
+    asm volatile("int $3");
+
     fpu_init();
     sse_init();
     serial_writestring(COM1, "FPU/SSE [OK]\n");
