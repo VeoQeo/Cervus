@@ -2,23 +2,19 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <string.h>
-
 typedef struct {
     char*  buf;
     size_t pos;
     size_t size;
 } snprintf_ctx_t;
-
 static void ctx_putc(snprintf_ctx_t* ctx, char c) {
     if (ctx->pos + 1 < ctx->size)
         ctx->buf[ctx->pos] = c;
     ctx->pos++;
 }
-
 static void ctx_puts(snprintf_ctx_t* ctx, const char* s, int len) {
     for (int i = 0; i < len; i++) ctx_putc(ctx, s[i]);
 }
-
 static void write_uint_full(snprintf_ctx_t* ctx,
                              unsigned long long val, int base, int upper,
                              int width, int zero_pad, int left,
@@ -28,7 +24,6 @@ static void write_uint_full(snprintf_ctx_t* ctx,
     char tmp[72]; int len = 0;
     if (val == 0) { tmp[len++] = '0'; }
     else { while (val) { tmp[len++] = digs[val % (unsigned)base]; val /= (unsigned)base; } }
-
     char prefix[4]; int pfx = 0;
     if      (forced_sign)  prefix[pfx++] = forced_sign;
     else if (show_sign)    prefix[pfx++] = '+';
@@ -36,17 +31,14 @@ static void write_uint_full(snprintf_ctx_t* ctx,
     if (alt && base == 16) { prefix[pfx++] = '0'; prefix[pfx++] = upper ? 'X':'x'; }
     else if (alt && base == 8 && !(len==1 && tmp[0]=='0')) { prefix[pfx++] = '0'; }
     else if (alt && base == 2) { prefix[pfx++] = '0'; prefix[pfx++] = upper ? 'B':'b'; }
-
     int total = len + pfx;
     int pad   = (width > total) ? width - total : 0;
-
     if (!left && !zero_pad) { for (int i=0;i<pad;i++) ctx_putc(ctx,' '); }
     ctx_puts(ctx, prefix, pfx);
     if (!left &&  zero_pad) { for (int i=0;i<pad;i++) ctx_putc(ctx,'0'); }
     for (int i = len-1; i >= 0; i--) ctx_putc(ctx, tmp[i]);
     if ( left)              { for (int i=0;i<pad;i++) ctx_putc(ctx,' '); }
 }
-
 static void write_sint(snprintf_ctx_t* ctx, long long val,
                         int width, int zero_pad, int left,
                         int show_sign, int space_sign) {
@@ -57,7 +49,6 @@ static void write_sint(snprintf_ctx_t* ctx, long long val,
     write_uint_full(ctx, uval, 10, 0, width, zero_pad, left,
                     0, show_sign, space_sign, sign);
 }
-
 static const unsigned long long pow10_tbl[18] = {
     1ULL, 10ULL, 100ULL, 1000ULL, 10000ULL, 100000ULL,
     1000000ULL, 10000000ULL, 100000000ULL, 1000000000ULL,
@@ -65,7 +56,6 @@ static const unsigned long long pow10_tbl[18] = {
     10000000000000ULL, 100000000000000ULL, 1000000000000000ULL,
     10000000000000000ULL, 100000000000000000ULL
 };
-
 static int ilog10(double val) {
     int e = 0;
     if (val >= 1.0) {
@@ -84,21 +74,16 @@ static int ilog10(double val) {
     (void)val;
     return e;
 }
-
 static int double_to_str(char* buf, double val, char fmt_char, int precision,
                           int show_sign, int space_sign, int alt, int is_neg) {
     if (precision < 0)  precision = 6;
     if (precision > 17) precision = 17;
-
     int upper = (fmt_char == 'F' || fmt_char == 'E' || fmt_char == 'G');
     int i = 0;
-
     if      (is_neg)     buf[i++] = '-';
     else if (show_sign)  buf[i++] = '+';
     else if (space_sign) buf[i++] = ' ';
-
     int exp10 = (val != 0.0) ? ilog10(val) : 0;
-
     int use_exp;
     if (fmt_char == 'e' || fmt_char == 'E') {
         use_exp = 1;
@@ -112,7 +97,6 @@ static int double_to_str(char* buf, double val, char fmt_char, int precision,
         use_exp = (exp10 > 15 || (val != 0.0 && exp10 < -17));
         if (use_exp) { fmt_char = upper ? 'E' : 'e'; upper = (fmt_char == 'E'); }
     }
-
     double src = val;
     if (use_exp && val != 0.0) {
         int e = exp10;
@@ -123,16 +107,13 @@ static int double_to_str(char* buf, double val, char fmt_char, int precision,
         if (src >= 10.0) { src /= 10.0; exp10++; }
         if (src <  1.0 && src != 0.0) { src *= 10.0; exp10--; }
     }
-
     unsigned long long scale    = pow10_tbl[precision];
     double             scaled_d = src * (double)scale + 0.5;
     if (scaled_d >= 1.8e19) scaled_d = 1.8e19 - 1.0;
     unsigned long long iscaled   = (unsigned long long)scaled_d;
     unsigned long long int_part  = iscaled / scale;
     unsigned long long frac_part = iscaled % scale;
-
     if (use_exp && int_part >= 10) { int_part = 1; frac_part = 0; exp10++; }
-
     {
         char itmp[24]; int ilen = 0;
         unsigned long long ip = int_part;
@@ -140,7 +121,6 @@ static int double_to_str(char* buf, double val, char fmt_char, int precision,
         else while (ip) { itmp[ilen++] = '0' + (int)(ip % 10); ip /= 10; }
         for (int j = ilen-1; j >= 0; j--) buf[i++] = itmp[j];
     }
-
     if (precision > 0 || alt) {
         char ftmp[20];
         unsigned long long fp2 = frac_part;
@@ -157,7 +137,6 @@ static int double_to_str(char* buf, double val, char fmt_char, int precision,
             for (int k = 0; k < fend; k++) buf[i++] = ftmp[k];
         }
     }
-
     if (use_exp) {
         buf[i++] = upper ? 'E' : 'e';
         int ae = exp10 < 0 ? -exp10 : exp10;
@@ -166,16 +145,13 @@ static int double_to_str(char* buf, double val, char fmt_char, int precision,
         buf[i++] = '0' + (ae / 10) % 10;
         buf[i++] = '0' + ae % 10;
     }
-
     return i;
 }
-
 static void write_float(snprintf_ctx_t* ctx, double val, char fmt_char,
                          int precision, int width, int zero_pad, int left,
                          int show_sign, int space_sign, int alt) {
     char tmp[64]; int len;
     int upper = (fmt_char == 'F' || fmt_char == 'E' || fmt_char == 'G');
-
     if (val != val) {
         const char* s = upper ? "NAN" : "nan";
         len = 3; tmp[0]=s[0]; tmp[1]=s[1]; tmp[2]=s[2];
@@ -194,7 +170,6 @@ static void write_float(snprintf_ctx_t* ctx, double val, char fmt_char,
                                 show_sign, space_sign, alt, is_neg);
         }
     }
-
     int has_sign = (tmp[0]=='-' || tmp[0]=='+' || tmp[0]==' ');
     int pad = (width > len) ? width - len : 0;
     if (!left && !zero_pad) { for (int j=0;j<pad;j++) ctx_putc(ctx,' '); }
@@ -207,16 +182,13 @@ static void write_float(snprintf_ctx_t* ctx, double val, char fmt_char,
     }
     if (left) { for (int j=0;j<pad;j++) ctx_putc(ctx,' '); }
 }
-
 int vsnprintf(char* restrict buf, size_t size, const char* restrict fmt,
               va_list ap) {
     snprintf_ctx_t ctx = { buf, 0, size ? size : 1 };
-
     for (; *fmt; fmt++) {
         if (*fmt != '%') { ctx_putc(&ctx, *fmt); continue; }
         fmt++;
         if (!*fmt) break;
-
         int left=0, zero_pad=0, alt=0, show_sign=0, space_sign=0;
         for (;;) {
             if      (*fmt=='-') { left=1;       fmt++; }
@@ -226,7 +198,6 @@ int vsnprintf(char* restrict buf, size_t size, const char* restrict fmt,
             else if (*fmt==' ') { space_sign=1; fmt++; }
             else break;
         }
-
         int width = 0;
         if (*fmt == '*') {
             width = va_arg(ap, int);
@@ -235,7 +206,6 @@ int vsnprintf(char* restrict buf, size_t size, const char* restrict fmt,
         } else {
             while (*fmt >= '0' && *fmt <= '9') width = width*10 + (*fmt++ - '0');
         }
-
         int precision=-1, has_prec=0;
         if (*fmt == '.') {
             has_prec=1; precision=0; fmt++;
@@ -248,7 +218,6 @@ int vsnprintf(char* restrict buf, size_t size, const char* restrict fmt,
                     precision = precision*10 + (*fmt++ - '0');
             }
         }
-
         int is_hh=0,is_h=0,is_l=0,is_ll=0,is_z=0;
         if (*fmt=='h') {
             fmt++;
@@ -259,9 +228,7 @@ int vsnprintf(char* restrict buf, size_t size, const char* restrict fmt,
         } else if (*fmt=='z') { is_z=1; fmt++; }
           else if (*fmt=='t') { is_l=1; fmt++; }
           else if (*fmt=='L') { fmt++; }
-
         if (!*fmt) break;
-
         switch (*fmt) {
         case 'd': case 'i': {
             long long v;
@@ -352,28 +319,23 @@ int vsnprintf(char* restrict buf, size_t size, const char* restrict fmt,
         default:  ctx_putc(&ctx,'%'); ctx_putc(&ctx,*fmt); break;
         }
     }
-
     if (size > 0) buf[ctx.pos < size ? ctx.pos : size-1] = '\0';
     return (int)ctx.pos;
 }
-
 int vprintf(const char* restrict fmt, va_list ap) {
     char buf[1024];
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     for (int i = 0; i < n && buf[i]; i++) putchar(buf[i]);
     return n;
 }
-
 int vsprintf(char* restrict buf, const char* restrict fmt, va_list ap) {
     return vsnprintf(buf, (size_t)-1, fmt, ap);
 }
-
 int snprintf(char* restrict buf, size_t size, const char* restrict fmt, ...) {
     va_list ap; va_start(ap, fmt);
     int n = vsnprintf(buf, size, fmt, ap);
     va_end(ap); return n;
 }
-
 int sprintf(char* restrict buf, const char* restrict fmt, ...) {
     va_list ap; va_start(ap, fmt);
     int n = vsnprintf(buf, (size_t)-1, fmt, ap);

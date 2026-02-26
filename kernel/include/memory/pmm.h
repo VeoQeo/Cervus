@@ -1,11 +1,9 @@
 #ifndef PMM_H
 #define PMM_H
-
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <limine.h>
-
 typedef struct {
     uintptr_t mem_start;
     uintptr_t mem_end;
@@ -16,25 +14,18 @@ typedef struct {
     uint8_t* bitmap;
     uint64_t hhdm_offset;
 } pmm_state_t;
-
 #define PAGE_SIZE 0x1000
 #define PMM_PAGE_ALIGN(x) (((x) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
-
 void pmm_init(struct limine_memmap_response*, struct limine_hhdm_response*);
-
 void* pmm_alloc(size_t pages);
 void* pmm_alloc_zero(size_t pages);
 void* pmm_alloc_aligned(size_t pages, size_t alignment);
 void pmm_free(void* addr, size_t pages);
-
 uintptr_t pmm_virt_to_phys(void* addr);
 void* pmm_phys_to_virt(uintptr_t addr);
 uint64_t pmm_get_hhdm_offset(void);
-
 size_t pmm_get_total_pages(void);
 size_t pmm_get_free_pages(void);
 size_t pmm_get_used_pages(void);
-
 void pmm_print_stats(void);
-
 #endif

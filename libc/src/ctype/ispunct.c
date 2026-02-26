@@ -1,5 +1,4 @@
 #include <ctype.h>
-
 int ispunct(int c) {
     return (c >= 33 && c <= 47) ||
         (c >= 58 && c <= 64) ||

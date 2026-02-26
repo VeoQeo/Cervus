@@ -1,5 +1,4 @@
 #include <string.h>
-
 size_t strspn(const char *str1, const char *str2) {
     size_t count = 0;
     while (*str1) {
@@ -12,13 +11,10 @@ size_t strspn(const char *str1, const char *str2) {
             }
             p++;
         }
-
         if (!found)
             break;
-
         count++;
         str1++;
     }
-
     return count;
 }

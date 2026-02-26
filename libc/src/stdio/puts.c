@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <string.h>
-
 int puts(const char *str) {
     int count = 0;
-    
     if (!str) {
         const char *null_str = "(null)";
         while (*null_str) {
@@ -14,14 +12,11 @@ int puts(const char *str) {
         count++;
         return count;
     }
-    
     while (*str) {
         putchar(*str++);
         count++;
     }
-    
     putchar('\n');
     count++;
-    
     return count;
 }

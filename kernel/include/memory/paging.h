@@ -1,25 +1,20 @@
 #ifndef PAGING_H
 #define PAGING_H
-
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include "vmm.h"
 #include "../include/interrupts/interrupts.h"
-
 #define PAGING_PRESENT    VMM_PRESENT
 #define PAGING_WRITE      VMM_WRITE
 #define PAGING_USER       VMM_USER
 #define PAGING_NOEXEC     VMM_NOEXEC
-
 #define PAGING_KERNEL     (PAGING_PRESENT | PAGING_WRITE)
 #define PAGING_USER_RW    (PAGING_PRESENT | PAGING_WRITE | PAGING_USER)
 #define PAGING_USER_RO    (PAGING_PRESENT | PAGING_USER)
 #define PAGING_USER_NOEXEC (PAGING_PRESENT | PAGING_USER | PAGING_NOEXEC)
-
 #define PAGING_LARGE_PAGE_SIZE    0x200000
 #define PAGING_HUGE_PAGE_SIZE     0x40000000
-
 typedef struct {
     uintptr_t virtual_start;
     uintptr_t virtual_end;
@@ -28,7 +23,6 @@ typedef struct {
     size_t page_count;
     bool allocated;
 } paging_region_t;
-
 void paging_init(void);
 bool paging_map_range(vmm_pagemap_t* pagemap, uintptr_t virt_start, uintptr_t phys_start, size_t page_count, uint64_t flags);
 bool paging_unmap_range(vmm_pagemap_t* pagemap, uintptr_t virt_start, size_t page_count);

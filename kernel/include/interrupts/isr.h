@@ -1,10 +1,7 @@
 #ifndef ISR_H
 #define ISR_H
-
 #include "interrupts.h"
-
 #define ISR_EXCEPTION_COUNT 32
-
 enum {
     EXCEPTION_DIVIDE_ERROR = 0,
     EXCEPTION_DEBUG,
@@ -39,7 +36,6 @@ enum {
     EXCEPTION_SECURITY_EXCEPTION = 30,
     EXCEPTION_RESERVED31
 };
-
 static const char* exception_names[] __attribute__((unused)) = {
     "Divide Error",
     "Debug",
@@ -74,8 +70,6 @@ static const char* exception_names[] __attribute__((unused)) = {
     "Security Exception",
     "Reserved"
 };
-
 void isr_common_handler(struct int_frame_t* regs);
 void setup_defined_isr_handlers(void);
-
 #endif

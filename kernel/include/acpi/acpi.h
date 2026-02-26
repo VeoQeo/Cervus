@@ -1,11 +1,9 @@
 #ifndef ACPI_H
 #define ACPI_H
-
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <limine.h>
-
 typedef struct {
     char signature[4];
     uint32_t length;
@@ -17,7 +15,6 @@ typedef struct {
     uint32_t creator_id;
     uint32_t creator_revision;
 } __attribute__((packed)) acpi_sdt_header_t;
-
 typedef struct {
     char signature[8];
     uint8_t checksum;
@@ -25,7 +22,6 @@ typedef struct {
     uint8_t revision;
     uint32_t rsdt_address;
 } __attribute__((packed)) acpi_rsdp_t;
-
 typedef struct {
     acpi_rsdp_t rsdp_v1;
     uint32_t length;
@@ -33,17 +29,14 @@ typedef struct {
     uint8_t extended_checksum;
     uint8_t reserved[3];
 } __attribute__((packed)) acpi_rsdp2_t;
-
 typedef struct {
     acpi_sdt_header_t header;
     uint32_t sdt_pointers[];
 } __attribute__((packed)) acpi_rsdt_t;
-
 typedef struct {
     acpi_sdt_header_t header;
     uint64_t sdt_pointers[];
 } __attribute__((packed)) acpi_xsdt_t;
-
 typedef struct {
     acpi_sdt_header_t header;
     uint32_t firmware_ctrl;
@@ -99,33 +92,28 @@ typedef struct {
     uint8_t x_gpe0_block[12];
     uint8_t x_gpe1_block[12];
 } __attribute__((packed)) acpi_fadt_t;
-
 typedef struct {
     acpi_sdt_header_t header;
     uint32_t local_apic_address;
     uint32_t flags;
     uint8_t entries[];
 } __attribute__((packed)) acpi_madt_t;
-
 #define MADT_ENTRY_LAPIC         0
 #define MADT_ENTRY_IOAPIC        1
 #define MADT_ENTRY_ISO           2
 #define MADT_ENTRY_NMI           4
 #define MADT_ENTRY_LAPIC_ADDR    5
 #define MADT_ENTRY_IOAPIC_MMIO   6
-
 typedef struct {
     uint8_t type;
     uint8_t length;
 } __attribute__((packed)) madt_entry_header_t;
-
 typedef struct {
     madt_entry_header_t header;
     uint8_t processor_id;
     uint8_t apic_id;
     uint32_t flags;
 } __attribute__((packed)) madt_lapic_entry_t;
-
 typedef struct {
     madt_entry_header_t header;
     uint8_t ioapic_id;
@@ -133,7 +121,6 @@ typedef struct {
     uint32_t ioapic_address;
     uint32_t global_system_interrupt_base;
 } __attribute__((packed)) madt_ioapic_entry_t;
-
 typedef struct {
     madt_entry_header_t header;
     uint8_t bus;
@@ -141,7 +128,6 @@ typedef struct {
     uint32_t global_system_interrupt;
     uint16_t flags;
 } __attribute__((packed)) madt_iso_entry_t;
-
 typedef struct {
     acpi_sdt_header_t header;
     uint8_t hardware_rev_id;
@@ -159,12 +145,10 @@ typedef struct {
     uint16_t minimum_tick;
     uint8_t page_protection;
 } __attribute__((packed)) acpi_hpet_t;
-
 typedef struct {
     acpi_sdt_header_t header;
     uint64_t reserved;
 } __attribute__((packed)) acpi_mcfg_t;
-
 typedef struct {
     uint64_t base_address;
     uint16_t pci_segment_group;
@@ -172,19 +156,14 @@ typedef struct {
     uint8_t end_pci_bus;
     uint32_t reserved;
 } __attribute__((packed)) mcfg_entry_t;
-
 typedef struct {
     acpi_sdt_header_t header;
     uint8_t definition_block[];
 } __attribute__((packed)) acpi_ssdt_t;
-
 void acpi_init(void);
 bool acpi_is_available(void);
 void* acpi_find_table(const char* signature, uint64_t index);
 void acpi_print_tables(void);
-
 extern volatile struct limine_rsdp_request rsdp_request;
-
 void acpi_shutdown(void);
-
 #endif

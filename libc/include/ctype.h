@@ -1,6 +1,5 @@
 #ifndef _CTYPE_H
 #define _CTYPE_H
-
 int isalnum(int c);
 int isalpha(int c);
 int isblank(int c);
@@ -15,5 +14,4 @@ int isspace(int c);
 int isxdigit(int c);
 int tolower(int c);
 int toupper(int c);
-
 #endif

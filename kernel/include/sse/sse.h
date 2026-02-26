@@ -1,14 +1,11 @@
 #ifndef SSE_H
 #define SSE_H
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
-
 #define MXCSR_DEFAULT 0x1F80
 #define MXCSR_FLUSH_TO_ZERO   (1 << 15)
 #define MXCSR_DENORMALS_ARE_ZERO (1 << 6)
-
 bool sse_supported(void);
 bool sse2_supported(void);
 bool sse3_supported(void);
@@ -27,5 +24,4 @@ void mmx_enter(void);
 void mmx_exit(void);
 void print_simd_cpuid(void);
 void enable_fsgsbase(void);
-
-#endif // SSE_H
+#endif 

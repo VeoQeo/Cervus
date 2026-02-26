@@ -268,7 +268,7 @@ bool build_hello_elf() {
     print_color(COLOR_CYAN, "[ELF] Compiling %s -> %s", HELLO_SRC, HELLO_ELF);
 
     int ret = cmd_run(false,
-        "gcc -nostdlib -nostartfiles -static -ffreestanding "
+        "clang --target=x86_64-elf -nostdlib -nostartfiles -static -ffreestanding "
         "-O2 -o %s %s",
         HELLO_ELF, HELLO_SRC);
 
@@ -334,7 +334,7 @@ bool compile_kernel() {
     const char *base_cflags = "-g -O2 -pipe -Wall -Wextra -std=gnu11 -nostdinc -ffreestanding "
                               "-fno-stack-protector -fno-stack-check -fno-lto -fno-PIC "
                               "-ffunction-sections -fdata-sections "
-                              "-m64 -march=x86-64 -mabi=sysv -mcmodel=kernel "
+                              "-m64 -march=x86-64  -mcmodel=kernel "
                               "-mno-red-zone -mgeneral-regs-only";
 
     const char *core_cflags = "-mno-sse -mno-sse2 -mno-mmx -mno-3dnow";
@@ -374,7 +374,7 @@ bool compile_kernel() {
             char temp_path[PATH_MAX];
             snprintf(temp_path, sizeof(temp_path), "temp_%s", strrchr(src, '/') + 1);
             cmd_run(false, "cp %s %s", src, temp_path);
-            cmd_run(false, "objcopy -I binary -O elf64-x86-64 -B i386:x86-64 --rename-section .data=.rodata,alloc,load,readonly,data,contents %s %s", temp_path, obj_path);
+            cmd_run(false, "llvm-objcopy -I binary -O elf64-x86-64 -B i386:x86-64 --rename-section .data=.rodata,alloc,load,readonly,data,contents %s %s", temp_path, obj_path);
             remove(temp_path);
             char stem[256]; strcpy(stem, strrchr(src, '/') + 1); *strrchr(stem, '.') = '\0';
             char redefine_args[1024] = "";
@@ -383,7 +383,7 @@ bool compile_kernel() {
                 "--redefine-sym _binary_temp_%s_psf_end=_binary_%s_psf_end "
                 "--redefine-sym _binary_temp_%s_psf_size=_binary_%s_psf_size",
                 stem, stem, stem, stem, stem, stem);
-            cmd_run(false, "objcopy %s %s", redefine_args, obj_path);
+            cmd_run(false, "llvm-objcopy %s %s", redefine_args, obj_path);
         } else if (strcmp(ext, ".asm") == 0) {
             print_color(COLOR_CYAN, "[asm] %s", src);
             if (cmd_run(false, "nasm -g -F dwarf -f elf64 %s -o %s", src, obj_path) != 0) compilation_failed = true;
@@ -393,7 +393,7 @@ bool compile_kernel() {
             if (sse) snprintf(final_flags, sizeof(final_flags), "%s %s", base_cflags, sse_cflags_suffix);
             else snprintf(final_flags, sizeof(final_flags), "%s %s", base_cflags, core_cflags);
             print_color(sse ? COLOR_MAGENTA : COLOR_CYAN, "[%s] %s", category, src);
-            if (cmd_run(false, "gcc %s %s -c %s -o %s", final_flags, cppflags, src, obj_path) != 0) compilation_failed = true;
+            if (cmd_run(false, "clang --target=x86_64-elf %s %s -c %s -o %s", final_flags, cppflags, src, obj_path) != 0) compilation_failed = true;
         }
     }
 
@@ -401,7 +401,7 @@ bool compile_kernel() {
 
     print_color(COLOR_BLUE, "Linking kernel...");
     char ld_cmd[65536];
-    snprintf(ld_cmd, sizeof(ld_cmd), "ld -m elf_x86_64 -nostdlib -static -z max-page-size=0x1000 --gc-sections -T kernel/linker-scripts/x86_64.lds -o bin/kernel");
+    snprintf(ld_cmd, sizeof(ld_cmd), "ld.lld -nostdlib -static -z max-page-size=0x1000 --gc-sections -T kernel/linker-scripts/x86_64.lds -o bin/kernel");
     for (int i = 0; i < objects.count; i++) { strcat(ld_cmd, " "); strcat(ld_cmd, objects.paths[i]); }
     if (system(ld_cmd) != 0) return false;
 

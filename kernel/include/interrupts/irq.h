@@ -1,11 +1,8 @@
 #ifndef IRQ_H
 #define IRQ_H
-
 #include <stdint.h>
 #include "interrupts.h"
-
 #define IRQ_INTERRUPTS_COUNT 224
-
 static const char* irq_default_names[] __attribute__((unused)) = {
     "IRQ0 timer",
     "IRQ1 keyboard",
@@ -24,8 +21,6 @@ static const char* irq_default_names[] __attribute__((unused)) = {
     "IRQ14 ATA1",
     "IRQ15 ATA2"
 };
-
 void irq_common_handler(struct int_frame_t* regs);
 void setup_defined_irq_handlers(void);
-
 #endif

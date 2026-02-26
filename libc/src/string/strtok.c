@@ -1,7 +1,5 @@
 #include <string.h>
-
 static char *old_string = NULL;
-
 char *strtok(char *str, const char *delim) {
     if (str == NULL) str = old_string;
     str += strspn(str, delim);
@@ -9,7 +7,6 @@ char *strtok(char *str, const char *delim) {
         old_string = str;
         return NULL;
     }
-
     char *token = str;
     str = strpbrk(token, delim);
     if (str == NULL)
