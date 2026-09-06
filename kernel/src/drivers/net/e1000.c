@@ -225,6 +225,13 @@ static int e1000_probe(pci_device_t *dev) {
 
     uint8_t mac[6];
     read_mac(e, mac);
+    if (!(mac[0] | mac[1] | mac[2] | mac[3] | mac[4] | mac[5])) {
+        serial_printf("[e1000] %02x:%02x.%u has an all-zero station address, "
+                      "not treating it as an e1000\n",
+                      dev->bus, dev->device, dev->function);
+        free(e);
+        return -1;
+    }
     ew(e, E1000_RAL, (uint32_t)mac[0] | ((uint32_t)mac[1] << 8) |
                      ((uint32_t)mac[2] << 16) | ((uint32_t)mac[3] << 24));
     ew(e, E1000_RAH, (uint32_t)mac[4] | ((uint32_t)mac[5] << 8) | (1u << 31));
