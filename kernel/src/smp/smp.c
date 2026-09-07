@@ -25,6 +25,7 @@ extern struct {
 
 static smp_info_t smp_info = {0};
 static volatile uint32_t ap_online_count = 0;
+static volatile uint32_t ap_tramp_taken  = 0;
 static uint32_t expected_online = 1;
 tlb_shootdown_t tlb_shootdown_queue[MAX_CPUS] = {0};
 
@@ -40,6 +41,8 @@ void sched_notify_ready(void) {
 __attribute__((used))
 void ap_entry_init(void) {
     asm volatile ("cli");
+
+    __atomic_add_fetch(&ap_tramp_taken, 1, __ATOMIC_RELEASE);
 
     lapic_write(0xF0, 0);
 
@@ -160,7 +163,8 @@ static void smp_boot_aps_native(void) {
         info->cpus[i].stack_top = stack_top;
         info->cpus[i].state     = CPU_BOOTED;
 
-        uint32_t before = __atomic_load_n(&ap_online_count, __ATOMIC_ACQUIRE);
+        uint32_t before_online = __atomic_load_n(&ap_online_count, __ATOMIC_ACQUIRE);
+        uint32_t before_taken  = __atomic_load_n(&ap_tramp_taken,  __ATOMIC_ACQUIRE);
         smp_set_tramp_stack(stack_top);
 
         uint32_t lid = info->cpus[i].lapic_id;
@@ -168,17 +172,28 @@ static void smp_boot_aps_native(void) {
         apic_udelay(10000);
         lapic_send_startup(lid, vector);
         apic_udelay(200);
-        if (__atomic_load_n(&ap_online_count, __ATOMIC_ACQUIRE) == before) {
+        if (__atomic_load_n(&ap_tramp_taken, __ATOMIC_ACQUIRE) == before_taken) {
             lapic_send_startup(lid, vector);
             apic_udelay(200);
         }
 
-        uint64_t timeout = 50000000;
-        while (__atomic_load_n(&ap_online_count, __ATOMIC_ACQUIRE) == before && timeout--)
+        uint64_t t_take = 200000000;
+        while (__atomic_load_n(&ap_tramp_taken, __ATOMIC_ACQUIRE) == before_taken && t_take--)
             asm volatile ("pause");
 
-        if (__atomic_load_n(&ap_online_count, __ATOMIC_ACQUIRE) == before) {
-            serial_printf("[SMP] AP %u (LAPIC %u) did not start\n", i, lid);
+        if (__atomic_load_n(&ap_tramp_taken, __ATOMIC_ACQUIRE) == before_taken) {
+            serial_printf("[SMP] AP %u (LAPIC %u) never entered the trampoline\n", i, lid);
+            info->cpus[i].state = CPU_FAULTED;
+            continue;
+        }
+
+        uint64_t t_online = 400000000;
+        while (__atomic_load_n(&ap_online_count, __ATOMIC_ACQUIRE) == before_online && t_online--)
+            asm volatile ("pause");
+
+        if (__atomic_load_n(&ap_online_count, __ATOMIC_ACQUIRE) == before_online) {
+            serial_printf("[SMP] AP %u (LAPIC %u) took the trampoline but did not finish\n",
+                          i, lid);
             info->cpus[i].state = CPU_FAULTED;
         } else {
             online++;

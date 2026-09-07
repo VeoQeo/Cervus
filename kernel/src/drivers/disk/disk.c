@@ -201,11 +201,16 @@ static void disk_media_worker(void *arg) {
     }
 }
 
+extern void kernel_substage(const char *name);
+
 void disk_init(void) {
     serial_writestring("[disk] initializing...\n");
     blkdev_init();
+    kernel_substage("ahci");
     ahci_init();
+    kernel_substage("nvme");
     nvme_init();
+    kernel_substage("ata");
     ata_init();
     int count = 0;
     const char *names[] = { "hda", "hdb", "hdc", "hdd" };

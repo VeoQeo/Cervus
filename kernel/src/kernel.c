@@ -59,6 +59,8 @@ fb_info_t *global_framebuffer = NULL;
 static fb_info_t s_fb;
 
 __attribute__((unused))
+void kernel_stage_echo_off(void);
+
 static void ps2_diag_task(void *arg) {
     (void)arg;
     extern void apic_dump_irq(uint8_t);
@@ -143,6 +145,7 @@ static void load_elf_module(void) {
     net_start_worker();
     timer_start_recal_task();
 
+    kernel_stage_echo_off();
     console_boot_logging_off();
 }
 
@@ -208,6 +211,20 @@ static bool find_installed_root(char *out, size_t out_cap) {
     return false;
 }
 
+static int g_stage_echo = 1;
+
+static void kstage(const char *name) {
+    serial_printf("[stage] %s\n", name);
+    if (g_stage_echo) printf("  .. %s\n", name);
+}
+
+void kernel_stage_echo_off(void) { g_stage_echo = 0; }
+
+void kernel_substage(const char *name) {
+    serial_printf("[stage]   %s\n", name);
+    if (g_stage_echo) printf("  .... %s\n", name);
+}
+
 void kmain(void) {
     outb(0x21, 0xFF);
     outb(0xA1, 0xFF);
@@ -261,18 +278,18 @@ void kmain(void) {
     vfs_mount("/proc", procroot);
     vfs_set_mount_info("/proc", "procfs", "procfs");
     serial_writestring("procfs [OK]\n");
-    serial_writestring("[stage] acpi_init\n");
+    kstage("acpi_init");
     acpi_init();
     acpi_print_tables();
     serial_writestring("ACPI [OK]\n");
-    serial_writestring("[stage] apic_init\n");
+    kstage("apic_init");
     apic_init();
     serial_writestring("APIC [OK]\n");
-    serial_writestring("[stage] pci_init\n");
+    kstage("pci_init");
     bga_init();
     pci_init();
     serial_writestring("PCI [OK]\n");
-    serial_writestring("[stage] smp_init\n");
+    kstage("smp_init");
     smp_init();
     serial_writestring("SMP [OK]\n");
 
@@ -305,18 +322,18 @@ void kmain(void) {
     printf("%u cpu%s configured\n", smp_get_cpu_count(),
            smp_get_cpu_count() == 1 ? "" : "s");
 
-    serial_writestring("[stage] syscall_init\n");
+    kstage("syscall_init");
     syscall_init();
-    serial_writestring("[stage] disk_init (ATA/AHCI/NVMe probe)\n");
+    kstage("disk_init (ATA/AHCI/NVMe probe)");
     disk_init();
 
-    serial_writestring("[stage] xhci_init\n");
+    kstage("xhci_init");
     xhci_init();
-    serial_writestring("[stage] ehci_init\n");
+    kstage("ehci_init");
     ehci_init();
-    serial_writestring("[stage] uhci_init\n");
+    kstage("uhci_init");
     uhci_init();
-    serial_writestring("[stage] usb done\n");
+    kstage("usb done");
     {
         int xn = xhci_controller_count();
         int en = ehci_controller_count();
@@ -327,13 +344,13 @@ void kmain(void) {
         if (!xn && !en && !un) printf("usb: no controllers detected\n");
     }
 
-    serial_writestring("[stage] net_init\n");
+    kstage("net_init");
     net_init();
 
-    serial_writestring("[stage] ac97_init\n");
+    kstage("ac97_init");
     ac97_init();
 
-    serial_writestring("[stage] hda_init\n");
+    kstage("hda_init");
     hda_init();
 
     bool has_initramfs_module = (boot_info()->module_count >= 2);
@@ -392,12 +409,12 @@ void kmain(void) {
         serial_writestring("[initramfs] no TAR module (modules[1] missing)\n");
     }
 
-    serial_writestring("[stage] timer_init\n");
+    kstage("timer_init");
     timer_init();
-    serial_writestring("[stage] ps2_init\n");
+    kstage("ps2_init");
     bool ps2_kb = ps2_init();
 
-    serial_writestring("[stage] sched_init\n");
+    kstage("sched_init");
     sched_init();
     sched_notify_ready();
     timer_sleep_ms(10);
@@ -410,7 +427,7 @@ void kmain(void) {
     serial_printf("[input] PS/2 kbd=%s USB kbd=%d (xhci=%d ehci=%d uhci=%d)\n",
                   ps2_kb ? "yes" : "no", xk + ek + uk, xk, ek, uk);
     printf("starting init...\n\n");
-    serial_writestring("[stage] load init (ELF)\n");
+    kstage("load init (ELF)");
     load_elf_module();
     puzzle_guardian_start();
 
