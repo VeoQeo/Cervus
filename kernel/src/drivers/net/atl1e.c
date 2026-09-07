@@ -203,6 +203,7 @@ typedef struct atl1e_dev {
     int        seq_errs;
     uint64_t   last_report_ms;
     uint64_t   last_rx, last_tx, last_drop;
+    uint32_t   isr_seen;
     spinlock_t lock;
     struct atl1e_dev *next;
 } atl1e_t;
@@ -608,8 +609,9 @@ static void atl1e_report(atl1e_t *a) {
           a->seq_errs, (unsigned)a->rx_using,
           (unsigned)*a->page[0].wptr, (unsigned)a->page[0].read_offset,
           (unsigned)*a->page[1].wptr, (unsigned)a->page[1].read_offset,
-          ar32(a, ATE_ISR), (unsigned)a->tpd_prod,
+          a->isr_seen, (unsigned)a->tpd_prod,
           (unsigned)ar16(a, ATE_TPD_CONS_IDX), ar32(a, ATE_IDLE_STATUS));
+    a->isr_seen = 0;
 }
 
 static void atl1e_worker(void *arg) {
@@ -617,9 +619,14 @@ static void atl1e_worker(void *arg) {
     int tick = 0;
     for (;;) {
         for (atl1e_t *a = g_nics; a; a = a->next) {
+            uint32_t isr = ar32(a, ATE_ISR);
+            if (isr && isr != ISR_DIS_INT) {
+                a->isr_seen |= isr & ~ISR_DIS_INT;
+                aw32(a, ATE_ISR, isr);
+            }
             atl1e_rx_drain(a);
             if ((tick % 500) == 0) atl1e_link_poll(a);
-            if ((tick % 5000) == 0) atl1e_report(a);
+            if ((tick % 2500) == 0) atl1e_report(a);
         }
         tick++;
         task_sleep_ms(1);

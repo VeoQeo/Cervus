@@ -1,3 +1,4 @@
+#include "../../include/io/serial.h"
 #include "../../include/net/tcp.h"
 #include "../../include/net/ip.h"
 #include "../../include/net/ipv6.h"
@@ -699,8 +700,15 @@ void tcp_rx(netdev_t *dev, uint32_t src_ip, uint32_t dst_ip, const uint8_t *seg,
     spinlock_release(&g_tcbs_lock);
     if (!t) {
         if (lst && (flags & TH_SYN) && !(flags & TH_ACK)) {
+            LOG_I("[tcp] SYN from %u.%u.%u.%u:%u -> :%u, answering\n",
+                  (src_ip >> 24) & 0xFF, (src_ip >> 16) & 0xFF,
+                  (src_ip >> 8) & 0xFF, src_ip & 0xFF, sport, dport);
             tcp_accept_syn(lst, src_ip, sport, seq);
         } else if (!lst) {
+            if (flags & TH_SYN)
+                LOG_I("[tcp] SYN to closed port %u from %u.%u.%u.%u:%u, refusing\n",
+                      dport, (src_ip >> 24) & 0xFF, (src_ip >> 16) & 0xFF,
+                      (src_ip >> 8) & 0xFF, src_ip & 0xFF, sport);
             uint32_t ack = rd32be(seg + 8);
             uint32_t hlen = (uint32_t)((seg[12] >> 4) * 4u);
             uint32_t dlen = (hlen <= len) ? (uint32_t)(len - hlen) : 0u;
