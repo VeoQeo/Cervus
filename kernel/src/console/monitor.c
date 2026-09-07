@@ -53,7 +53,15 @@ static void mon_draw_line(uint32_t row, const char *s, uint32_t fg, uint32_t bg)
 #define MON_HIT_FG 0x000000
 #define MON_HIT_BG 0xD0B000
 
-static void mon_draw_hl(uint32_t row, const char *s, int is_cursor) {
+static uint32_t mon_line_rows(const char *s) {
+    uint32_t cols = mon_cols();
+    uint32_t len = (uint32_t)strlen(s);
+    if (cols == 0) return 1;
+    if (len == 0) return 1;
+    return (len + cols - 1) / cols;
+}
+
+static void mon_draw_hl(uint32_t row, const char *s, uint32_t off, int is_cursor) {
     if (!global_framebuffer) return;
     uint32_t cw = fb_font_width(), chh = fb_font_height();
     uint32_t y = row * chh;
@@ -62,21 +70,47 @@ static void mon_draw_hl(uint32_t row, const char *s, int is_cursor) {
     fb_fill_rect(global_framebuffer, 0, y, global_framebuffer->width, chh, base_bg);
     uint32_t cols = mon_cols();
     int qlen = (int)strlen(g_last);
-    char hit[512];
-    int slen = 0;
-    while (s[slen] && slen < (int)sizeof(hit)) { hit[slen] = 0; slen++; }
+    char hit[KLOG_LINE_MAX + 16];
+    int slen = (int)strlen(s);
+    if (slen > (int)sizeof(hit)) slen = (int)sizeof(hit);
+    for (int i = 0; i < slen; i++) hit[i] = 0;
     if (qlen > 0 && slen >= qlen) {
         for (int k = 0; k + qlen <= slen; k++) {
             if (strncmp(s + k, g_last, qlen) == 0)
                 for (int m = 0; m < qlen; m++) hit[k + m] = 1;
         }
     }
-    for (uint32_t i = 0; i < cols && s[i]; i++) {
+    for (uint32_t i = 0; i < cols && s[off + i]; i++) {
+        uint32_t si = off + i;
         uint32_t fg = base_fg, bg = base_bg;
-        if (i < (uint32_t)sizeof(hit) && hit[i]) { fg = MON_HIT_FG; bg = MON_HIT_BG; }
+        if (si < (uint32_t)slen && hit[si]) { fg = MON_HIT_FG; bg = MON_HIT_BG; }
         if (bg != base_bg) fb_fill_rect(global_framebuffer, i * cw, y, cw, chh, bg);
-        fb_draw_char(global_framebuffer, (uint8_t)s[i], i * cw, y, fg);
+        fb_draw_char(global_framebuffer, (uint8_t)s[si], i * cw, y, fg);
     }
+}
+
+static uint32_t mon_draw_wrapped(uint32_t row, uint32_t limit, const char *s,
+                                 int is_cursor) {
+    uint32_t cols = mon_cols();
+    uint32_t need = mon_line_rows(s);
+    uint32_t drawn = 0;
+    for (uint32_t k = 0; k < need && row + drawn < limit; k++) {
+        mon_draw_hl(row + drawn, s, k * cols, is_cursor);
+        drawn++;
+    }
+    return drawn;
+}
+
+static void mon_format(uint64_t ln, char *out, size_t cap) {
+    char line[KLOG_LINE_MAX];
+    if (klog_get_line(ln, line, sizeof line) < 0) { out[0] = 0; return; }
+    snprintf(out, cap, "%5llu  %s", (unsigned long long)ln, line);
+}
+
+static uint32_t mon_rows_for(uint64_t ln) {
+    char display[KLOG_LINE_MAX + 16];
+    mon_format(ln, display, sizeof display);
+    return mon_line_rows(display);
 }
 
 static void mon_build_status(char *out, size_t n) {
@@ -110,25 +144,36 @@ static void mon_render(int show_status) {
         if (g_cursor > total) g_cursor = total;
         if (g_cursor < first) g_cursor = first;
         if (g_cursor < g_top) g_top = g_cursor;
-        if (g_cursor >= g_top + content) g_top = g_cursor - content + 1;
+        uint32_t used = 0;
+        for (uint64_t ln = g_top; ln <= g_cursor; ln++) used += mon_rows_for(ln);
+        while (used > content && g_top < g_cursor) {
+            used -= mon_rows_for(g_top);
+            g_top++;
+        }
         if (g_top < first) g_top = first;
     } else {
-        g_top = (total + 1 > content) ? (total + 1 - content) : first;
+        uint64_t ln = total;
+        uint32_t used = 0;
+        for (;;) {
+            uint32_t need = mon_rows_for(ln);
+            if (used + need > content && used > 0) { ln++; break; }
+            used += need;
+            if (ln <= first) break;
+            ln--;
+        }
+        g_top = ln;
     }
 
-    char line[KLOG_LINE_MAX];
     char display[KLOG_LINE_MAX + 16];
-    for (uint32_t r = 0; r < content; r++) {
-        uint64_t ln = g_top + r;
-        int is_cur = (paused && ln == g_cursor);
-        if (ln <= total && klog_get_line(ln, line, sizeof line) >= 0) {
-            snprintf(display, sizeof display, "%5llu  %s",
-                     (unsigned long long)ln, line);
-            mon_draw_hl(r, display, is_cur);
-        } else {
-            mon_draw_hl(r, "", 0);
-        }
+    uint32_t r = 0;
+    for (uint64_t ln = g_top; ln <= total && r < content; ln++) {
+        mon_format(ln, display, sizeof display);
+        uint32_t used = mon_draw_wrapped(r, content, display,
+                                         paused && ln == g_cursor);
+        if (used == 0) break;
+        r += used;
     }
+    while (r < content) mon_draw_hl(r++, "", 0, 0);
     if (show_status) {
         char st[200];
         mon_build_status(st, sizeof st);
@@ -159,23 +204,19 @@ static void mon_append_live(int show_status) {
     if (total <= g_shown) return;
 
     uint64_t nnew = total - g_shown;
-    if (nnew >= content) {
+    uint32_t newrows = 0;
+    for (uint64_t i = 0; i < nnew; i++) newrows += mon_rows_for(g_shown + 1 + i);
+    if (nnew >= content || newrows >= content) {
         mon_render(show_status);
         return;
     }
 
-    mon_scroll_region(content * fb_font_height(), (uint32_t)nnew * fb_font_height());
-    char line[KLOG_LINE_MAX];
+    mon_scroll_region(content * fb_font_height(), newrows * fb_font_height());
     char display[KLOG_LINE_MAX + 16];
+    uint32_t row = content - newrows;
     for (uint64_t i = 0; i < nnew; i++) {
-        uint32_t row = (uint32_t)(content - nnew + i);
-        if (klog_get_line(g_shown + i, line, sizeof line) >= 0) {
-            snprintf(display, sizeof display, "%5llu  %s",
-                     (unsigned long long)(g_shown + i), line);
-            mon_draw_line(row, display, MON_FG, MON_BG);
-        } else {
-            mon_draw_line(row, "", MON_FG, MON_BG);
-        }
+        mon_format(g_shown + 1 + i, display, sizeof display);
+        row += mon_draw_wrapped(row, content, display, 0);
     }
     if (show_status) {
         char st[200];
