@@ -29,6 +29,8 @@ time_t time(time_t *t);
 clock_t clock(void);
 
 struct tm *localtime(const time_t *t);
+long        timezone_offset(void);
+const char *timezone_name(void);
 struct tm *gmtime(const time_t *t);
 time_t mktime(struct tm *tm);
 

@@ -51,6 +51,34 @@ typedef struct { uint16_t ws_row, ws_col, ws_xpixel, ws_ypixel; } winsize_t;
 
 typedef enum { DISK_KIND_INTERNAL, DISK_KIND_USB, DISK_KIND_OTHER } disk_kind_t;
 
+typedef struct { const char *zone; int minutes; const char *label; } tz_entry_t;
+
+static const tz_entry_t TZONES[] = {
+    { "UTC",               0,    "UTC                     +00:00" },
+    { "Europe/Lisbon",     0,    "Lisbon, Dublin, London  +00:00" },
+    { "Europe/Berlin",     60,   "Berlin, Paris, Warsaw   +01:00" },
+    { "Europe/Kyiv",       120,  "Kyiv, Athens, Helsinki  +02:00" },
+    { "Europe/Moscow",     180,  "Moscow, Istanbul        +03:00" },
+    { "Asia/Dubai",        240,  "Dubai, Samara           +04:00" },
+    { "Asia/Karachi",      300,  "Karachi, Yekaterinburg  +05:00" },
+    { "Asia/Almaty",       360,  "Almaty, Omsk            +06:00" },
+    { "Asia/Bangkok",      420,  "Bangkok, Krasnoyarsk    +07:00" },
+    { "Asia/Shanghai",     480,  "Shanghai, Irkutsk       +08:00" },
+    { "Asia/Tokyo",        540,  "Tokyo, Yakutsk          +09:00" },
+    { "Australia/Sydney",  600,  "Sydney, Vladivostok     +10:00" },
+    { "Pacific/Auckland",  720,  "Auckland, Kamchatka     +12:00" },
+    { "Atlantic/Azores",  -60,   "Azores                  -01:00" },
+    { "America/Sao_Paulo",-180,  "Sao Paulo, Buenos Aires -03:00" },
+    { "America/New_York", -300,  "New York, Toronto       -05:00" },
+    { "America/Chicago",  -360,  "Mexico City, Chicago    -06:00" },
+    { "America/Denver",   -420,  "Denver, Phoenix         -07:00" },
+    { "America/Los_Angeles", -480, "Los Angeles, Vancouver  -08:00" },
+};
+#define N_TZONES ((int)(sizeof TZONES / sizeof TZONES[0]))
+
+static int g_tz_index = 0;
+
+
 typedef struct {
     char        name[32];
     char        model[41];
@@ -1359,6 +1387,15 @@ static void apply_accounts(const account_cfg_t *a) {
     fd = open("/mnt/root/etc/sudoers", O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd >= 0) { if (sn > 0) write(fd, su, (size_t)sn); close(fd); }
 
+    {
+        char tz[128];
+        int tn = snprintf(tz, sizeof tz, "%s %d\n",
+                          TZONES[g_tz_index].zone, TZONES[g_tz_index].minutes);
+        unlink("/mnt/root/etc/timezone");
+        fd = open("/mnt/root/etc/timezone", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd >= 0) { write(fd, tz, (size_t)tn); close(fd); }
+    }
+
     ensure_dir("/mnt/root/home");
     for (int i = 0; i < a->n_users; i++) {
         int uid = 1000 + i;
@@ -1720,6 +1757,36 @@ static void info_bootloader(int row, int col, int w) {
     info_print(&row, col, w, 1, "Pick Limine if unsure.");
 }
 
+
+static void info_timezone(int row, int col, int w) {
+    info_print(&row, col, w, 1, "Which offset from UTC this machine");
+    info_print(&row, col, w, 1, "should use when showing the time.");
+    info_print(&row, col, w, 1, "");
+    info_print(&row, col, w, 1, "The hardware clock is left on UTC, and");
+    info_print(&row, col, w, 1, "this offset is applied when a time is");
+    info_print(&row, col, w, 1, "displayed - by the clock, by ls and by");
+    info_print(&row, col, w, 1, "the file manager.");
+    info_print(&row, col, w, 1, "");
+    info_print(&row, col, w, 1, "There is no daylight saving rule, so a");
+    info_print(&row, col, w, 1, "summer offset has to be picked by hand.");
+    info_print(&row, col, w, 1, "");
+    info_print(&row, col, w, 1, "It can be changed later by editing");
+    info_print(&row, col, w, 1, "/etc/timezone.");
+}
+
+static int choose_timezone(void) {
+    const char *items[N_TZONES + 1];
+    for (int i = 0; i < N_TZONES; i++) items[i] = TZONES[i].label;
+    items[N_TZONES] = "Back";
+    for (;;) {
+        int sel = menu_in_box("Choose time zone", items, N_TZONES + 1,
+                              g_tz_index, info_timezone);
+        if (sel < 0 || sel == N_TZONES) return -1;
+        g_tz_index = sel;
+        return sel;
+    }
+}
+
 static int choose_bootloader(void) {
     const char *items[] = {
         "Limine  (default - small and fast)",
@@ -2053,6 +2120,7 @@ static int do_main_install_flow(disk_entry_t *disks, int n_disks) {
             if (fs < 0) continue;
             L.fs = (fstype_t)fs;
         }
+        if (choose_timezone() < 0) continue;
         if (confirm_screen(&disks[picked], &L) != 1) continue;
 
         account_cfg_t acc;
