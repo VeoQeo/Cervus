@@ -167,12 +167,41 @@ static const named_theme_t *theme_at(int i) {
 }
 
 static const char USAGE[] =
-    "Usage: theme                 show the current theme and the rest\n"
-    "       theme <name>          switch to a theme and remember it\n"
-    "       theme <name> --once   switch without saving\n"
-    "       theme bg #RRGGBB      set just the background\n"
-    "       theme fg #RRGGBB      set just the text colour\n"
-    "       theme -r              back to classic\n";
+"theme - the colours the console draws with\n"
+"\n"
+"Usage\n"
+"  theme                    list the schemes, marking the one in use\n"
+"  theme <name>             switch to it, and use it again after a reboot\n"
+"  theme <name> --once      switch without remembering\n"
+"  theme edit [name]        open the editor, starting from <name>\n"
+"  theme bg #RRGGBB         change only the background\n"
+"  theme fg #RRGGBB         change only the text colour\n"
+"  theme -r                 back to the original palette\n"
+"\n"
+"The editor\n"
+"  up down                  choose one of the eighteen colours\n"
+"  left right               choose the red, green or blue channel\n"
+"  Enter, or any digit      type that channel, 0 to 255\n"
+"  -  +                     change it by one\n"
+"  _  =                     change it by sixteen\n"
+"  h                        type the whole colour, like #1E1E2E\n"
+"  n                        name the scheme\n"
+"  s                        save it\n"
+"  q                        leave\n"
+"\n"
+"  The console follows every change as it is made, so the editor is\n"
+"  drawn in the scheme being edited. Nothing is written until s.\n"
+"\n"
+"What the colours are for\n"
+"  Sixteen palette entries plus two defaults. Programs ask for a\n"
+"  palette entry by meaning, not by value: red for errors, green for\n"
+"  the prompt and executables, blue for directories, cyan for status\n"
+"  bars. The two defaults are the text colour where nothing else is\n"
+"  set, and the background. The editor lists the use beside each one.\n"
+"\n"
+"Files\n"
+"  /etc/console.conf        the chosen scheme, restored at boot\n"
+"  /etc/themes/*.theme      schemes made here, listed with the rest\n";
 
 static theme_t g_cur;
 static char    g_cur_name[32] = "classic";
