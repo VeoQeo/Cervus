@@ -18,6 +18,15 @@
 #define TIOCGCURSOR   0x5480
 #define TIOCSNONBLOCK 0x5481
 
+#define TIO_OFF_OFLAG   4
+#define TIO_OFF_LFLAG   12
+#define TIO_OFF_CC      16
+#define TIO_OPOST       0x00000001u
+#define TIO_ONLCR       0x00000004u
+#define TIO_ISIG        0x00000001u
+#define TIO_VINTR       0
+#define PTY_SIGINT      2
+
 typedef struct {
     char     buf[PTY_BUF];
     uint32_t head, tail;
@@ -32,11 +41,18 @@ typedef struct {
     uint16_t ws[4];
     int      m_open, s_open;
     int      m_nonblock, s_nonblock;
+    uint32_t slave_pid;
     spinlock_t lock;
 } pty_t;
 
 static const vnode_ops_t pty_master_ops;
 static const vnode_ops_t pty_slave_ops;
+
+static uint32_t tio_flag(pty_t *p, int off) {
+    uint32_t v;
+    memcpy(&v, p->termios + off, sizeof v);
+    return v;
+}
 
 static int ring_count(pty_ring *r) { return (int)((r->tail - r->head + PTY_BUF) % PTY_BUF); }
 static int ring_free(pty_ring *r)  { return PTY_BUF - 1 - ring_count(r); }
@@ -108,17 +124,83 @@ static int64_t pty_master_read(vnode_t *n, void *buf, size_t len, uint64_t off) 
     (void)off; pty_t *p = n->fs_data;
     return pty_do_read(p, &p->s2m, &p->s_open, p->m_nonblock, buf, len);
 }
+static void pty_signal_foreground(pty_t *p, int sig) {
+    extern task_t *task_find_by_pid(uint32_t pid);
+    extern void signal_send_children(task_t *root, int sig);
+    if (!p->slave_pid) return;
+    task_t *sh = task_find_by_pid(p->slave_pid);
+    if (!sh || sh->state == TASK_ZOMBIE || sh->state == TASK_DEAD) return;
+    signal_send_children(sh, sig);
+}
+
 static int64_t pty_master_write(vnode_t *n, const void *buf, size_t len, uint64_t off) {
     (void)off; pty_t *p = n->fs_data;
-    return pty_do_write(p, &p->m2s, &p->s_open, p->m_nonblock, buf, len);
+
+    uint32_t lflag = tio_flag(p, TIO_OFF_LFLAG);
+    uint8_t intr = p->termios[TIO_OFF_CC + TIO_VINTR];
+    if (!(lflag & TIO_ISIG) || intr == 0)
+        return pty_do_write(p, &p->m2s, &p->s_open, p->m_nonblock, buf, len);
+
+    const char *src = buf;
+    size_t consumed = 0;
+    while (consumed < len) {
+        size_t run = 0;
+        while (consumed + run < len && (uint8_t)src[consumed + run] != intr) run++;
+
+        if (run) {
+            int64_t w = pty_do_write(p, &p->m2s, &p->s_open, p->m_nonblock,
+                                     src + consumed, run);
+            if (w < 0) return consumed ? (int64_t)consumed : w;
+            consumed += (size_t)w;
+            if ((size_t)w < run) break;
+        }
+        if (consumed < len && (uint8_t)src[consumed] == intr) {
+            pty_signal_foreground(p, PTY_SIGINT);
+            consumed++;
+        }
+    }
+    return (int64_t)consumed;
 }
 static int64_t pty_slave_read(vnode_t *n, void *buf, size_t len, uint64_t off) {
     (void)off; pty_t *p = n->fs_data;
+    task_t *me = syscall_cur_task();
+    if (me) p->slave_pid = me->pid;
     return pty_do_read(p, &p->m2s, &p->m_open, p->s_nonblock, buf, len);
 }
+
 static int64_t pty_slave_write(vnode_t *n, const void *buf, size_t len, uint64_t off) {
     (void)off; pty_t *p = n->fs_data;
-    return pty_do_write(p, &p->s2m, &p->m_open, p->s_nonblock, buf, len);
+
+    uint32_t oflag = tio_flag(p, TIO_OFF_OFLAG);
+    if (!(oflag & TIO_OPOST) || !(oflag & TIO_ONLCR))
+        return pty_do_write(p, &p->s2m, &p->m_open, p->s_nonblock, buf, len);
+
+    const char *src = buf;
+    size_t consumed = 0;
+    while (consumed < len) {
+        char tmp[256];
+        int n = 0;
+        size_t took = 0;
+        while (consumed + took < len && n <= (int)sizeof tmp - 2) {
+            char c = src[consumed + took];
+            if (c == '\n') tmp[n++] = '\r';
+            tmp[n++] = c;
+            took++;
+        }
+        int64_t w = pty_do_write(p, &p->s2m, &p->m_open, p->s_nonblock, tmp, (size_t)n);
+        if (w < 0) return consumed ? (int64_t)consumed : w;
+        if (w >= n) { consumed += took; continue; }
+
+        int64_t used = 0;
+        for (size_t i = 0; i < took; i++) {
+            int64_t need = (src[consumed + i] == '\n') ? 2 : 1;
+            if (used + need > w) break;
+            used += need;
+            consumed++;
+        }
+        break;
+    }
+    return (int64_t)consumed;
 }
 
 static int64_t pty_ioctl(vnode_t *n, uint64_t req, void *arg, int is_master) {
@@ -181,7 +263,9 @@ int64_t sys_openpty(uint64_t ufds) {
     if (!p) return -ENOMEM;
     p->m_open = 1; p->s_open = 1;
     p->ws[0] = 24; p->ws[1] = 80;
-    p->termios[12] = 0x0b;
+    p->termios[TIO_OFF_LFLAG] = 0x0b;
+    p->termios[TIO_OFF_OFLAG] = (uint8_t)(TIO_OPOST | TIO_ONLCR);
+    p->termios[TIO_OFF_CC + TIO_VINTR] = 3;
 
     vnode_t *mv = calloc(1, sizeof(*mv));
     vnode_t *sv = calloc(1, sizeof(*sv));
