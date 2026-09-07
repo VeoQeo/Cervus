@@ -125,6 +125,49 @@ static void tcp_output(tcp_tcb_t *t, uint32_t seq, uint8_t flags,
     ip_send(dev, t->remote_ip, IPPROTO_TCP, seg, 20 + dlen, IP_DEFAULT_TTL);
 }
 
+static void tcp_reject(uint32_t dst_ip, const uint8_t *dst6,
+                       uint16_t sport, uint16_t dport,
+                       uint32_t seq, uint32_t ack, uint8_t in_flags,
+                       uint32_t seglen) {
+    if (in_flags & TH_RST) return;
+    netdev_t *dev = tdev();
+    if (!dev) return;
+
+    uint8_t seg[20];
+    uint32_t out_seq, out_ack;
+    uint8_t out_flags;
+
+    if (in_flags & TH_ACK) {
+        out_seq = ack;
+        out_ack = 0;
+        out_flags = TH_RST;
+    } else {
+        out_seq = 0;
+        out_ack = seq + seglen + ((in_flags & TH_SYN) ? 1u : 0u);
+        out_flags = TH_RST | TH_ACK;
+    }
+
+    wr16be(seg + 0, dport);
+    wr16be(seg + 2, sport);
+    wr32be(seg + 4, out_seq);
+    wr32be(seg + 8, out_ack);
+    seg[12] = 5 << 4;
+    seg[13] = out_flags;
+    wr16be(seg + 14, 0);
+    wr16be(seg + 16, 0);
+    wr16be(seg + 18, 0);
+
+    if (dst6) {
+        uint8_t src6[16];
+        memcpy(src6, dev->ip6_ll, 16);
+        wr16be(seg + 16, tcp6_csum(src6, dst6, seg, 20));
+        ipv6_output(dev, src6, dst6, IPPROTO_TCP, seg, 20);
+        return;
+    }
+    wr16be(seg + 16, tcp_csum(dev->ip, dst_ip, seg, 20));
+    ip_send(dev, dst_ip, IPPROTO_TCP, seg, 20, IP_DEFAULT_TTL);
+}
+
 static tcp_tcb_t *tcb_find(uint32_t rip, uint16_t rport, uint16_t lport) {
     for (tcp_tcb_t *t = g_tcbs; t; t = t->next)
         if (t->family != AF_INET6 && t->local_port == lport && t->remote_port == rport && t->remote_ip == rip)
@@ -655,7 +698,14 @@ void tcp_rx(netdev_t *dev, uint32_t src_ip, uint32_t dst_ip, const uint8_t *seg,
     tcp_tcb_t *lst = t ? NULL : find_listener(dport);
     spinlock_release(&g_tcbs_lock);
     if (!t) {
-        if (lst && (flags & TH_SYN) && !(flags & TH_ACK)) tcp_accept_syn(lst, src_ip, sport, seq);
+        if (lst && (flags & TH_SYN) && !(flags & TH_ACK)) {
+            tcp_accept_syn(lst, src_ip, sport, seq);
+        } else if (!lst) {
+            uint32_t ack = rd32be(seg + 8);
+            uint32_t hlen = (uint32_t)((seg[12] >> 4) * 4u);
+            uint32_t dlen = (hlen <= len) ? (uint32_t)(len - hlen) : 0u;
+            tcp_reject(src_ip, NULL, sport, dport, seq, ack, flags, dlen);
+        }
         return;
     }
     tcp_input(t, seg, len);
@@ -673,7 +723,14 @@ void tcp6_rx(netdev_t *dev, const uint8_t *src6, const uint8_t *dst6, const uint
     tcp_tcb_t *lst = t ? NULL : find_listener6(dport);
     spinlock_release(&g_tcbs_lock);
     if (!t) {
-        if (lst && (flags & TH_SYN) && !(flags & TH_ACK)) tcp_accept_syn6(lst, src6, dst6, sport, seq);
+        if (lst && (flags & TH_SYN) && !(flags & TH_ACK)) {
+            tcp_accept_syn6(lst, src6, dst6, sport, seq);
+        } else if (!lst) {
+            uint32_t ack = rd32be(seg + 8);
+            uint32_t hlen = (uint32_t)((seg[12] >> 4) * 4u);
+            uint32_t dlen = (hlen <= len) ? (uint32_t)(len - hlen) : 0u;
+            tcp_reject(0, src6, sport, dport, seq, ack, flags, dlen);
+        }
         return;
     }
     tcp_input(t, seg, len);
