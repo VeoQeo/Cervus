@@ -121,6 +121,20 @@ static void restore_audio_settings(void) {
     waitpid(child, &status, 0);
 }
 
+static void restore_console_theme(void) {
+    struct stat st;
+    if (stat("/bin/theme", &st) != 0) return;
+    pid_t child = fork();
+    if (child < 0) return;
+    if (child == 0) {
+        const char *argv[3] = { "/bin/theme", "--restore", NULL };
+        execve("/bin/theme", (char *const *)argv, environ);
+        _exit(127);
+    }
+    int status = 0;
+    waitpid(child, &status, 0);
+}
+
 static void read_default_shell(void) {
     int fd = open("/mnt/etc/shell", O_RDONLY, 0);
     if (fd < 0) fd = open("/etc/shell", O_RDONLY, 0);
@@ -252,6 +266,7 @@ int main(void) {
     term_cooked();
 
     restore_console_font();
+    restore_console_theme();
     restore_audio_settings();
 
     boot_stage("spawning shell on vt0");

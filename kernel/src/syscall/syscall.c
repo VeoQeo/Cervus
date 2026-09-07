@@ -165,6 +165,7 @@ extern int64_t sys_audio_open(uint64_t);
 extern int64_t sys_audio_write(uint64_t, uint64_t);
 extern int64_t sys_audio_close(void);
 extern int64_t sys_audio_mixer(uint64_t, uint64_t, uint64_t);
+extern int64_t sys_console_theme(uint64_t);
 
 typedef int64_t (*syscall_fn_t)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
 
@@ -235,6 +236,7 @@ W3(sys_semget)      W3(sys_semop)      W4(sys_semctl)
 W3(sys_mount9)
 W1(sys_audio_open)  W2(sys_audio_write)  W0(sys_audio_close)
 W3(sys_audio_mixer)
+W1(sys_console_theme)
 
 static const syscall_fn_t syscall_table[SYSCALL_TABLE_SIZE] = {
     [SYS_EXIT]              = _sys_exit,
@@ -358,6 +360,7 @@ static const syscall_fn_t syscall_table[SYSCALL_TABLE_SIZE] = {
     [SYS_AUDIO_WRITE]       = _sys_audio_write,
     [SYS_AUDIO_CLOSE]       = _sys_audio_close,
     [SYS_AUDIO_MIXER]       = _sys_audio_mixer,
+    [SYS_CONSOLE_THEME]     = _sys_console_theme,
     [SYS_SETFONT]           = _sys_setfont,
     [SYS_RT_SIGACTION]      = _sys_rt_sigaction,
     [SYS_RT_SIGPROCMASK]    = _sys_rt_sigprocmask,

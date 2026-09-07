@@ -144,6 +144,7 @@
 #define SYS_RT_SIGRETURN    603
 #define SYS_DISK_FORMAT_PROGRESS 604
 #define SYS_AUDIO_MIXER     605
+#define SYS_CONSOLE_THEME   606
 
 static inline int64_t
 __syscall6(uint64_t nr, uint64_t a1, uint64_t a2, uint64_t a3,

@@ -63,4 +63,15 @@ void monitor_input(char c);
 void monitor_tick(void);
 void console_boot_logging_off(void);
 
+typedef struct {
+    uint32_t palette[16];
+    uint32_t fg;
+    uint32_t bg;
+} console_theme_t;
+
+void console_set_theme(const uint32_t pal[16], uint32_t fg, uint32_t bg);
+uint32_t console_theme_fg(void);
+uint32_t console_theme_bg(void);
+void vt_theme_changed(void);
+
 #endif

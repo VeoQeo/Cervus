@@ -260,6 +260,32 @@ void vt_mark_shell_running(int n, int running) {
     if (!running) g_vts[n].needs_shell = 0;
 }
 
+void vt_theme_changed(void) {
+    if (!g_inited || !global_framebuffer) return;
+    uint64_t f = spinlock_acquire_irqsave(&g_lock);
+
+    uint32_t bg = console_theme_bg();
+    for (int i = 0; i < VT_COUNT; i++) {
+        if (!g_vts[i].grid) continue;
+        size_t n = (size_t)g_cols * g_rows;
+        for (size_t c = 0; c < n; c++) {
+            g_vts[i].grid[c].ch = ' ';
+            g_vts[i].grid[c].fg = console_theme_fg();
+            g_vts[i].grid[c].bg = bg;
+        }
+        g_vts[i].state.cursor_x = 0;
+        g_vts[i].state.cursor_y = 0;
+    }
+
+    console_reset_state();
+    console_save_state(&g_vts[g_active].state);
+    fb_fill_rect(global_framebuffer, 0, 0,
+                 global_framebuffer->width, global_framebuffer->height, bg);
+    console_redraw_grid();
+    fb_flush(global_framebuffer);
+    spinlock_release_irqrestore(&g_lock, f);
+}
+
 void vt_font_changed(void) {
     if (!g_inited || !global_framebuffer) return;
     uint32_t nc = (uint32_t)(global_framebuffer->width  / fb_font_width());

@@ -6,8 +6,21 @@
 
 uint32_t cursor_x   = 0;
 uint32_t cursor_y   = 0;
+
+static uint32_t theme_pal[16] = {
+    0x000000, 0xAA0000, 0x00AA00, 0xAA5500,
+    0x0000AA, 0xAA00AA, 0x00AAAA, 0xAAAAAA,
+    0x555555, 0xFF5555, 0x55FF55, 0xFFFF55,
+    0x5555FF, 0xFF55FF, 0x55FFFF, 0xFFFFFF,
+};
+static uint32_t theme_fg = COLOR_WHITE;
+static uint32_t theme_bg = COLOR_BLACK;
+
 uint32_t text_color = COLOR_WHITE;
 uint32_t bg_color   = COLOR_BLACK;
+
+uint32_t console_theme_fg(void) { return theme_fg; }
+uint32_t console_theme_bg(void) { return theme_bg; }
 
 extern fb_info_t *global_framebuffer;
 
@@ -335,15 +348,15 @@ void draw_cursor(void)  { draw_cursor_at(cursor_x, cursor_y); }
 void erase_cursor(void) { erase_cursor_at(cursor_x, cursor_y); }
 
 static uint32_t ansi_color(int code, int bright) {
-    static const uint32_t base[8] = {
-        0x000000, 0xAA0000, 0x00AA00, 0xAA5500,
-        0x0000AA, 0xAA00AA, 0x00AAAA, 0xAAAAAA,
-    };
-    static const uint32_t bright8[8] = {
-        0x555555, 0xFF5555, 0x55FF55, 0xFFFF55,
-        0x5555FF, 0xFF55FF, 0x55FFFF, 0xFFFFFF,
-    };
-    return bright ? bright8[code & 7] : base[code & 7];
+    return theme_pal[(bright ? 8 : 0) + (code & 7)];
+}
+
+void console_set_theme(const uint32_t pal[16], uint32_t fg, uint32_t bg) {
+    if (pal) for (int i = 0; i < 16; i++) theme_pal[i] = pal[i] & 0xFFFFFF;
+    theme_fg = fg & 0xFFFFFF;
+    theme_bg = bg & 0xFFFFFF;
+    text_color = theme_fg;
+    bg_color   = theme_bg;
 }
 
 #define ESC_MAX_PARAMS 8
@@ -396,13 +409,13 @@ static uint32_t xterm256_to_rgb(int n) {
 
 static void handle_sgr(void) {
     if (ps_nparams == 0) {
-        text_color = COLOR_WHITE; bg_color = COLOR_BLACK;
+        text_color = theme_fg; bg_color = theme_bg;
         ps_reverse = 0;
         return;
     }
     for (int i = 0; i < ps_nparams; i++) {
         int p = ps_params[i]; if (p < 0) p = 0;
-        if      (p == 0)             { text_color = COLOR_WHITE; bg_color = COLOR_BLACK; ps_bold = 0; ps_reverse = 0; }
+        if      (p == 0)             { text_color = theme_fg; bg_color = theme_bg; ps_bold = 0; ps_reverse = 0; }
         else if (p == 1)             { ps_bold = 1; }
         else if (p == 22)            { ps_bold = 0; }
         else if (p == 7)             {
