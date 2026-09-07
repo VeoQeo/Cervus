@@ -12,6 +12,10 @@
 
 #define ATE_PCIE_PHYMISC        0x1000
 #define PCIE_PHYMISC_FORCE_RCV_DET  0x4
+#define ATE_PCIE_DLL_TX_CTRL1   0x1008
+#define PCIE_DLL_TX_CTRL1_SEL   0x8000
+#define ATE_LTSSM_TEST_MODE     0x12FC
+#define LTSSM_TEST_MODE_DEF     0xE000
 
 #define ATE_MASTER_CTRL         0x1400
 #define MASTER_SOFT_RST         0x1
@@ -197,6 +201,8 @@ typedef struct atl1e_dev {
     int        polled;
     int        draining;
     int        seq_errs;
+    uint64_t   last_report_ms;
+    uint64_t   last_rx, last_tx, last_drop;
     spinlock_t lock;
     struct atl1e_dev *next;
 } atl1e_t;
@@ -261,6 +267,12 @@ static int ate_reset(atl1e_t *a) {
     }
     serial_printf("[atl1e] reset timeout, idle=0x%x\n", ar32(a, ATE_IDLE_STATUS));
     return -1;
+}
+
+static void ate_init_pcie(atl1e_t *a) {
+    aw32(a, ATE_LTSSM_TEST_MODE, LTSSM_TEST_MODE_DEF);
+    uint32_t v = ar32(a, ATE_PCIE_DLL_TX_CTRL1);
+    aw32(a, ATE_PCIE_DLL_TX_CTRL1, v | PCIE_DLL_TX_CTRL1_SEL);
 }
 
 static void ate_phy_init(atl1e_t *a) {
@@ -578,6 +590,28 @@ static void atl1e_irq(void *ctx) {
     aw32(a, ATE_ISR, 0);
 }
 
+static void atl1e_report(atl1e_t *a) {
+    netdev_t *nd = a->ndev;
+    if (!nd) return;
+    if (nd->rx_packets == a->last_rx && nd->tx_packets == a->last_tx &&
+        nd->rx_dropped == a->last_drop)
+        return;
+    a->last_rx = nd->rx_packets;
+    a->last_tx = nd->tx_packets;
+    a->last_drop = nd->rx_dropped;
+
+    LOG_I("[atl1e] %s rx=%llu tx=%llu rxdrop=%llu txdrop=%llu seqerr=%d "
+          "using=%u p0(w=%u r=%u) p1(w=%u r=%u) isr=0x%08x tpd=%u/%u idle=0x%x\n",
+          nd->name,
+          (unsigned long long)nd->rx_packets, (unsigned long long)nd->tx_packets,
+          (unsigned long long)nd->rx_dropped, (unsigned long long)nd->tx_dropped,
+          a->seq_errs, (unsigned)a->rx_using,
+          (unsigned)*a->page[0].wptr, (unsigned)a->page[0].read_offset,
+          (unsigned)*a->page[1].wptr, (unsigned)a->page[1].read_offset,
+          ar32(a, ATE_ISR), (unsigned)a->tpd_prod,
+          (unsigned)ar16(a, ATE_TPD_CONS_IDX), ar32(a, ATE_IDLE_STATUS));
+}
+
 static void atl1e_worker(void *arg) {
     (void)arg;
     int tick = 0;
@@ -585,6 +619,7 @@ static void atl1e_worker(void *arg) {
         for (atl1e_t *a = g_nics; a; a = a->next) {
             atl1e_rx_drain(a);
             if ((tick % 500) == 0) atl1e_link_poll(a);
+            if ((tick % 5000) == 0) atl1e_report(a);
         }
         tick++;
         task_sleep_ms(1);
@@ -628,6 +663,9 @@ static int atl1e_probe(pci_device_t *dev) {
     ate_read_mac(a, mac);
 
     if (ate_reset(a) != 0) { free(a); return -1; }
+    ate_init_pcie(a);
+    aw32(a, ATE_RX_HASH_TABLE, 0);
+    aw32(a, ATE_RX_HASH_TABLE + 4, 0);
     ate_phy_init(a);
 
     if (ate_alloc_rings(a) != 0) {
