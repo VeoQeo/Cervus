@@ -337,6 +337,27 @@ static const char *SLOT_NAME[18] = {
     "text",    "background",
 };
 
+static const char *SLOT_USE[18] = {
+    "the darkest entry; behind reversed text",
+    "errors and warnings",
+    "the shell prompt, and executables in ls",
+    "device files, and highlights",
+    "directories in ls and in the file manager",
+    "symbolic links and special files",
+    "status bars and headings",
+    "ordinary text inside coloured output",
+    "the bold form of black; dimmed text",
+    "the bold form of red",
+    "the bold form of green",
+    "the bold form of yellow",
+    "the bold form of blue",
+    "the bold form of magenta",
+    "the bold form of cyan",
+    "the bold form of white; the brightest entry",
+    "text where nothing has set a colour",
+    "the console background, everywhere",
+};
+
 static uint32_t *slot_ptr(theme_t *t, int i) {
     if (i < 16) return &t->palette[i];
     if (i == 16) return &t->fg;
@@ -449,46 +470,63 @@ int theme_editor(const char *name) {
 
     for (;;) {
         int rows = getmaxy(stdscr), cols = getmaxx(stdscr);
+        int help_top = rows - 8;
         erase();
 
-        attron(A_BOLD);
+        attron(A_REVERSE);
+        move(0, 0);
+        for (int x = 0; x < cols; x++) addch(' ');
         mvprintw(0, 2, "theme editor");
-        attroff(A_BOLD);
-        mvprintw(0, 16, "%s%s", tname, dirty ? "  (unsaved)" : "");
+        mvprintw(0, 17, "%s", tname);
+        if (dirty) mvprintw(0, 17 + (int)strlen(tname) + 2, "(unsaved)");
+        attroff(A_REVERSE);
+
+        mvprintw(2, 2, "colour");
+        mvprintw(2, 16, "swatch");
+        mvprintw(2, 25, "value");
+        mvprintw(2, 35, "red  green blue");
+        mvprintw(2, 54, "where it is used");
+        move(3, 2);
+        for (int x = 2; x < cols - 2; x++) addch('-');
 
         for (int i = 0; i < 18; i++) {
-            int y = 2 + i;
-            if (y >= rows - 3) break;
+            int y = 4 + i;
+            if (y >= help_top - 1) break;
             uint32_t c = *slot_ptr(&t, i);
+
             if (i == sel) attron(A_REVERSE);
             mvprintw(y, 2, " %-11s ", SLOT_NAME[i]);
             if (i == sel) attroff(A_REVERSE);
+
             draw_slot_swatch(y, 16, i, 6);
-            mvprintw(y, 24, "#%06X   R %3u  G %3u  B %3u",
-                     c, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
-            if (i == sel) {
-                int cx = 24 + 11 + chan * 9;
-                mvprintw(y, cx - 2, ">");
+            mvprintw(y, 25, "#%06X", c);
+
+            for (int k = 0; k < 3; k++) {
+                int v = (int)((c >> ((2 - k) * 8)) & 0xFF);
+                int x = 35 + k * 6;
+                if (i == sel && k == chan) attron(A_REVERSE);
+                mvprintw(y, x, "%3d", v);
+                if (i == sel && k == chan) attroff(A_REVERSE);
             }
+
+            if (cols > 74) mvprintw(y, 54, "%.*s", cols - 56, SLOT_USE[i]);
         }
 
-        int py = 2;
-        int px = cols - 30;
-        if (px > 62) {
+        int px = cols - 26;
+        if (px > 76) {
             attron(A_BOLD);
-            mvprintw(py, px, "live preview");
+            mvprintw(4, px, "live preview");
             attroff(A_BOLD);
-            mvprintw(py + 1, px, "the console is already");
-            mvprintw(py + 2, px, "using what you edit");
+            mvprintw(5, px, "the console already");
+            mvprintw(6, px, "uses what you edit");
 
             for (int i = 0; i < 8; i++) {
-                draw_slot_swatch(py + 4 + i, px, i, 4);
-                draw_slot_swatch(py + 4 + i, px + 5, i + 8, 4);
+                draw_slot_swatch(8 + i, px, i, 4);
+                draw_slot_swatch(8 + i, px + 5, i + 8, 4);
             }
 
-            mvprintw(py + 13, px, "sample:");
             attron(COLOR_PAIR(1 + 2));
-            mvprintw(py + 14, px, "root");
+            mvprintw(18, px, "root");
             attroff(COLOR_PAIR(1 + 2));
             printw(":");
             attron(COLOR_PAIR(1 + 4) | A_BOLD);
@@ -496,13 +534,36 @@ int theme_editor(const char *name) {
             attroff(COLOR_PAIR(1 + 4) | A_BOLD);
             printw("# ls");
             attron(A_REVERSE);
-            mvprintw(py + 16, px, " reversed text ");
+            mvprintw(19, px, " reversed ");
             attroff(A_REVERSE);
         }
 
+        move(help_top, 0);
+        for (int x = 0; x < cols; x++) addch('-');
+
+        {
+            uint32_t c = *slot_ptr(&t, sel);
+            static const char *CH = "RGB";
+            mvprintw(help_top + 1, 2, "editing  %s  #%06X   channel %c = %d",
+                     SLOT_NAME[sel], c, CH[chan],
+                     (int)((c >> ((2 - chan) * 8)) & 0xFF));
+            mvprintw(help_top + 2, 2, "%s", SLOT_USE[sel]);
+
+            mvprintw(help_top + 4, 2,
+                     "up down  pick colour     left right  pick channel");
+            mvprintw(help_top + 5, 2,
+                     "-  +     change by 1     _  =        change by 16");
+            mvprintw(help_top + 4, 56,
+                     "h  type a value like #1E1E2E");
+            mvprintw(help_top + 5, 56,
+                     "n  name it     s  save     q  quit");
+        }
+
         attron(A_REVERSE);
-        mvprintw(rows - 1, 0, " up/down slot  left/right channel  -/+ adjust  "
-                              "h hex  n name  s save  q quit ");
+        move(rows - 1, 0);
+        for (int x = 0; x < cols - 1; x++) addch(' ');
+        mvprintw(rows - 1, 2,
+                 "changes show on screen at once; nothing is written until you press s");
         attroff(A_REVERSE);
         refresh();
 
