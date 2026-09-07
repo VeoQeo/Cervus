@@ -23,7 +23,18 @@ typedef struct {
     uint32_t      extent_lba;
     uint32_t      size_bytes;
     bool          is_dir;
+    int64_t       mtime;
 } iso9660_node_t;
+
+static int64_t iso9660_rec_time(const uint8_t *rec) {
+    int year = 1900 + rec[0];
+    int mon  = rec[1], day = rec[2];
+    int hour = rec[3], min = rec[4], sec = rec[5];
+    int8_t tz = (int8_t)rec[6];
+    int64_t t = vfs_make_time(year, mon, day, hour, min, sec);
+    if (t == 0) return 0;
+    return t - (int64_t)tz * 15 * 60;
+}
 
 static const vnode_ops_t iso9660_file_ops;
 static const vnode_ops_t iso9660_dir_ops;
@@ -45,7 +56,8 @@ static void iso9660_common_unref(vnode_t *n) {
 }
 
 static vnode_t *iso9660_alloc_vnode(iso9660_fs_t *fs, uint32_t extent_lba,
-                                    uint32_t size_bytes, bool is_dir)
+                                    uint32_t size_bytes, bool is_dir,
+                                    int64_t mtime)
 {
     vnode_t *vn = calloc(1, sizeof(vnode_t));
     if (!vn) return NULL;
@@ -56,6 +68,7 @@ static vnode_t *iso9660_alloc_vnode(iso9660_fs_t *fs, uint32_t extent_lba,
     nd->extent_lba = extent_lba;
     nd->size_bytes = size_bytes;
     nd->is_dir     = is_dir;
+    nd->mtime      = mtime;
 
     vn->ino      = g_iso9660_ino++;
     vn->refcount = 1;
@@ -112,7 +125,7 @@ static int iso9660_scan_dir(iso9660_fs_t *fs, uint32_t dir_lba, uint32_t dir_siz
                             const char *target_name, uint64_t want_index,
                             uint32_t *out_lba, uint32_t *out_size, bool *out_is_dir,
                             char *out_name_buf, size_t out_name_cap,
-                            uint64_t *visited_count)
+                            uint64_t *visited_count, int64_t *out_time)
 {
     uint8_t *block = kmalloc(fs->block_size);
     if (!block) return -ENOMEM;
@@ -150,6 +163,7 @@ static int iso9660_scan_dir(iso9660_fs_t *fs, uint32_t dir_lba, uint32_t dir_siz
                         *out_lba    = ext_lba;
                         *out_size   = ext_size;
                         *out_is_dir = (flags & 0x02) != 0;
+                        if (out_time) *out_time = iso9660_rec_time(block + off + 18);
                         kfree(block);
                         return 0;
                     }
@@ -160,6 +174,7 @@ static int iso9660_scan_dir(iso9660_fs_t *fs, uint32_t dir_lba, uint32_t dir_siz
                         *out_lba    = ext_lba;
                         *out_size   = ext_size;
                         *out_is_dir = (flags & 0x02) != 0;
+                        if (out_time) *out_time = iso9660_rec_time(block + off + 18);
                         kfree(block);
                         if (visited_count) *visited_count = seen;
                         return 0;
@@ -184,11 +199,12 @@ static int iso9660_dir_lookup(vnode_t *dir, const char *name, vnode_t **out) {
 
     uint32_t lba = 0, size = 0;
     bool is_dir = false;
+    int64_t mtime = 0;
     int r = iso9660_scan_dir(nd->fs, nd->extent_lba, nd->size_bytes,
-                             name, 0, &lba, &size, &is_dir, NULL, 0, NULL);
+                             name, 0, &lba, &size, &is_dir, NULL, 0, NULL, &mtime);
     if (r < 0) return r;
 
-    vnode_t *child = iso9660_alloc_vnode(nd->fs, lba, size, is_dir);
+    vnode_t *child = iso9660_alloc_vnode(nd->fs, lba, size, is_dir, mtime);
     if (!child) return -ENOMEM;
     *out = child;
     return 0;
@@ -204,7 +220,7 @@ static int iso9660_dir_readdir(vnode_t *dir, uint64_t index, vfs_dirent_t *out) 
     char nm[VFS_MAX_NAME];
     int r = iso9660_scan_dir(nd->fs, nd->extent_lba, nd->size_bytes,
                              NULL, index, &lba, &size, &is_dir,
-                             nm, sizeof(nm), NULL);
+                             nm, sizeof(nm), NULL, NULL);
     if (r < 0) return r;
 
     memset(out, 0, sizeof(*out));
@@ -223,6 +239,9 @@ static int iso9660_common_stat(vnode_t *n, vfs_stat_t *out) {
     out->st_mode   = n->mode;
     out->st_size   = nd ? nd->size_bytes : 0;
     out->st_blocks = nd ? (nd->size_bytes + 511) / 512 : 0;
+    out->st_atime  = nd ? nd->mtime : 0;
+    out->st_mtime  = nd ? nd->mtime : 0;
+    out->st_ctime  = nd ? nd->mtime : 0;
     return 0;
 }
 
@@ -326,7 +345,8 @@ vnode_t *iso9660_mount(blkdev_t *dev) {
 
     kfree(pvd);
 
-    vnode_t *root = iso9660_alloc_vnode(fs, fs->root_extent_lba, fs->root_size, true);
+    vnode_t *root = iso9660_alloc_vnode(fs, fs->root_extent_lba, fs->root_size, true,
+                                        iso9660_rec_time(root_rec + 18));
     if (!root) { free(fs); return NULL; }
     return root;
 }

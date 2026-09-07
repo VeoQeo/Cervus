@@ -43,6 +43,8 @@ typedef struct {
     uint32_t  fe_lba;
     uint64_t  size;
     bool      is_dir;
+    int64_t   atime;
+    int64_t   mtime;
 } udf_node_t;
 
 static const vnode_ops_t udf_file_ops;
@@ -181,6 +183,66 @@ static void udf_free_fe_extents(udf_fs_t *fs, const uint8_t *fe) {
         uint32_t nb = (elen + fs->block_size - 1) / fs->block_size;
         for (uint32_t k = 0; k < nb; k++) udf_free_block(fs, blk + k);
     }
+}
+
+static int64_t udf_ts(const uint8_t *p) {
+    int16_t year = (int16_t)rd16(p + 2);
+    int mon  = p[4], day = p[5];
+    int hour = p[6], min = p[7], sec = p[8];
+    int64_t t = vfs_make_time(year, mon, day, hour, min, sec);
+    if (t == 0) return 0;
+
+    uint16_t tt = rd16(p);
+    if ((tt >> 12) == 1) {
+        int16_t tz = (int16_t)(tt & 0x0FFF);
+        if (tz & 0x0800) tz |= (int16_t)0xF000;
+        if (tz != -2047) t -= (int64_t)tz * 60;
+    }
+    return t;
+}
+
+static void udf_ts_write(uint8_t *p, int64_t t) {
+    if (t <= 0) return;
+    int64_t days = t / 86400, rem = t % 86400;
+    int year = 1970;
+    for (;;) {
+        int len = ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) ? 366 : 365;
+        if (days < len) break;
+        days -= len;
+        year++;
+    }
+    static const int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    int mon = 1;
+    for (; mon <= 12; mon++) {
+        int len = mdays[mon - 1];
+        if (mon == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) len++;
+        if (days < len) break;
+        days -= len;
+    }
+    wr16(p, 0x1000);
+    wr16(p + 2, (uint16_t)year);
+    p[4] = (uint8_t)mon;
+    p[5] = (uint8_t)(days + 1);
+    p[6] = (uint8_t)(rem / 3600);
+    p[7] = (uint8_t)((rem % 3600) / 60);
+    p[8] = (uint8_t)(rem % 60);
+    p[9] = p[10] = p[11] = 0;
+}
+
+static void udf_fe_stamp(uint8_t *fe) {
+    int64_t now = clock_realtime_sec();
+    if (now <= 0) return;
+    int efe = (rd16(fe) == TAG_EFE);
+    udf_ts_write(fe + (efe ? 80 : 72), now);
+    udf_ts_write(fe + (efe ? 92 : 84), now);
+    udf_ts_write(fe + (efe ? 116 : 96), now);
+    if (efe) udf_ts_write(fe + 104, now);
+}
+
+static void udf_fe_times(const uint8_t *fe, int64_t *atime, int64_t *mtime) {
+    int efe = (rd16(fe) == TAG_EFE);
+    *atime = udf_ts(fe + (efe ? 80 : 72));
+    *mtime = udf_ts(fe + (efe ? 92 : 84));
 }
 
 static void udf_fe_info(const uint8_t *fe, bool *is_dir, uint64_t *size) {
@@ -373,6 +435,17 @@ static vnode_t *udf_alloc_vnode(udf_fs_t *fs, uint32_t fe_lba, uint64_t size, bo
     udf_node_t *nd = calloc(1, sizeof(udf_node_t));
     if (!nd) { free(vn); return NULL; }
     nd->fs = fs; nd->fe_lba = fe_lba; nd->size = size; nd->is_dir = is_dir;
+    {
+        uint8_t *fe = kmalloc(fs->block_size);
+        if (fe) {
+            if (udf_read_sector(fs->dev, fe_lba, fe) == 0) {
+                uint16_t tag = rd16(fe);
+                if (tag == TAG_FE || tag == TAG_EFE)
+                    udf_fe_times(fe, &nd->atime, &nd->mtime);
+            }
+            kfree(fe);
+        }
+    }
     vn->ino = g_udf_ino++;
     vn->refcount = 1;
     vn->fs_data = nd;
@@ -420,6 +493,9 @@ static int udf_stat(vnode_t *n, vfs_stat_t *out) {
     out->st_mode = n->mode;
     out->st_size = nd ? nd->size : 0;
     out->st_blocks = nd ? (nd->size + 511) / 512 : 0;
+    out->st_atime = nd ? nd->atime : 0;
+    out->st_mtime = nd ? nd->mtime : 0;
+    out->st_ctime = nd ? nd->mtime : 0;
     return 0;
 }
 
@@ -464,6 +540,7 @@ static int udf_write_fe_data(udf_fs_t *fs, uint8_t *fe, uint32_t fe_lba,
         wr64(fe + 56, size);
         if (efe) { wr64(fe + 64, size); wr64(fe + 72, 0); wr32(fe + 212, (uint32_t)size); }
         else     { wr64(fe + 64, 0);    wr32(fe + 172, (uint32_t)size); }
+        udf_fe_stamp(fe);
         udf_finalize_tag(fs, fe, efe ? TAG_EFE : TAG_FE, (uint16_t)(ad_area + size - 16), tag_loc);
         return udf_write_sector(fs->dev, fe_lba, fe);
     }
@@ -517,6 +594,7 @@ static int udf_write_fe_data(udf_fs_t *fs, uint8_t *fe, uint32_t fe_lba,
     wr64(fe + 56, size);
     if (efe) { wr64(fe + 64, size); wr64(fe + 72, nblocks); wr32(fe + 212, l_ad); }
     else     { wr64(fe + 64, nblocks); wr32(fe + 172, l_ad); }
+    udf_fe_stamp(fe);
     udf_finalize_tag(fs, fe, efe ? TAG_EFE : TAG_FE, (uint16_t)(ad_area + l_ad - 16), tag_loc);
     return udf_write_sector(fs->dev, fe_lba, fe);
 }
@@ -714,6 +792,7 @@ static int64_t udf_file_write(vnode_t *n, const void *buf, size_t len, uint64_t 
     wr64(fe + 56, new_size);
     if (efe) { wr64(fe + 64, new_size); wr64(fe + 72, needed); wr32(fe + 212, l_ad); }
     else     { wr64(fe + 64, needed); wr32(fe + 172, l_ad); }
+    udf_fe_stamp(fe);
     udf_finalize_tag(fs, fe, efe ? TAG_EFE : TAG_FE,
                      (uint16_t)(ad_area + l_ad - 16), nd->fe_lba - fs->part_start);
     int r = udf_write_sector(fs->dev, nd->fe_lba, fe);
@@ -803,6 +882,7 @@ static int udf_create(vnode_t *dir, const char *name, uint32_t mode, vnode_t **o
     uint64_t uid = (uint64_t)fe_block + 16;
     wr64(fe + (efe ? 200 : 160), uid);
     if (fs->next_uniqid <= uid) fs->next_uniqid = uid + 1;
+    udf_fe_stamp(fe);
     udf_finalize_tag(fs, fe, efe ? TAG_EFE : TAG_FE,
                      (uint16_t)(ad_area - 16), (uint32_t)fe_block);
     int wr = udf_write_sector(fs->dev, fe_lba, fe);
@@ -864,6 +944,7 @@ static int udf_mkdir(vnode_t *dir, const char *name, uint32_t mode) {
     uint64_t uid = (uint64_t)dblk + 16;
     wr64(fe + (efe ? 200 : 160), uid);
     if (fs->next_uniqid <= uid) fs->next_uniqid = uid + 1;
+    udf_fe_stamp(fe);
     udf_finalize_tag(fs, fe, efe ? TAG_EFE : TAG_FE,
                      (uint16_t)(ad_area + dir_data - 16), (uint32_t)dblk);
     int wr = udf_write_sector(fs->dev, dlba, fe);

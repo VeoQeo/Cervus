@@ -359,6 +359,7 @@ static int devfs_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_ino  = node->ino;
     out->st_type = node->type;
     out->st_mode = node->mode;
+    out->st_atime = out->st_mtime = out->st_ctime = vfs_boot_time();
     return 0;
 }
 

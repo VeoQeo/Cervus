@@ -176,6 +176,7 @@ static int procfile_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_type = VFS_NODE_FILE;
     out->st_mode = 0444;
     out->st_size = (uint64_t)total;
+    out->st_atime = out->st_mtime = out->st_ctime = vfs_boot_time();
     return 0;
 }
 
@@ -318,6 +319,7 @@ static int pidfile_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_type = VFS_NODE_FILE;
     out->st_mode = 0444;
     out->st_size = (uint64_t)total;
+    out->st_atime = out->st_mtime = out->st_ctime = vfs_boot_time();
     return 0;
 }
 
@@ -371,6 +373,7 @@ static int piddir_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_type = VFS_NODE_DIR;
     out->st_mode = 0555;
     out->st_size = PROC_PID_NFILES;
+    out->st_atime = out->st_mtime = out->st_ctime = vfs_boot_time();
     return 0;
 }
 
@@ -456,6 +459,7 @@ static int procroot_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_type = VFS_NODE_DIR;
     out->st_mode = 0555;
     out->st_size = PROC_NFILES;
+    out->st_atime = out->st_mtime = out->st_ctime = vfs_boot_time();
     return 0;
 }
 

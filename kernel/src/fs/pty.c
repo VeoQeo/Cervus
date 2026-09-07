@@ -223,7 +223,12 @@ static int64_t pty_master_ioctl(vnode_t *n, uint64_t req, void *arg) { return pt
 static int64_t pty_slave_ioctl(vnode_t *n, uint64_t req, void *arg) { return pty_ioctl(n, req, arg, 0); }
 
 static int pty_stat(vnode_t *n, vfs_stat_t *out) {
-    (void)n; memset(out, 0, sizeof(*out)); out->st_type = VFS_NODE_CHARDEV; out->st_size = 0; return 0;
+    (void)n;
+    memset(out, 0, sizeof(*out));
+    out->st_type = VFS_NODE_CHARDEV;
+    out->st_size = 0;
+    out->st_atime = out->st_mtime = out->st_ctime = vfs_boot_time();
+    return 0;
 }
 static void pty_ref(vnode_t *n) { (void)n; }
 

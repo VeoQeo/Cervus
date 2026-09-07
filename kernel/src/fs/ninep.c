@@ -130,7 +130,8 @@ static int p9_open(p9_conn_t *c, uint32_t fid, int mode) {
     return rl < 0 ? -1 : 0;
 }
 
-static int p9_stat(p9_conn_t *c, uint32_t fid, int *is_dir, uint64_t *length) {
+static int p9_stat(p9_conn_t *c, uint32_t fid, int *is_dir, uint64_t *length,
+                   int64_t *atime, int64_t *mtime) {
     p9_lock(c);
     uint8_t *m = c->wbuf; int i = 7;
     m[4] = Tstat; m[5] = 3; m[6] = 0; p32(m, &i, fid);
@@ -141,6 +142,8 @@ static int p9_stat(p9_conn_t *c, uint32_t fid, int *is_dir, uint64_t *length) {
         uint32_t mode = g32(st + 19);
         if (is_dir) *is_dir = (mode & 0x80000000u) ? 1 : 0;
         if (length) *length = g64(st + 31);
+        if (atime)  *atime  = (int64_t)g32(st + 23);
+        if (mtime)  *mtime  = (int64_t)g32(st + 27);
         ret = 0;
     }
     p9_unlock(c);
@@ -208,7 +211,7 @@ static int p9_lookup_op(vnode_t *dir, const char *name, vnode_t **out) {
     uint32_t nf = __atomic_fetch_add(&c->next_fid, 1, __ATOMIC_RELAXED);
     if (p9_walk(c, dn->fid, nf, name) != 0) return -ENOENT;
     int is_dir = 0; uint64_t length = 0;
-    p9_stat(c, nf, &is_dir, &length);
+    p9_stat(c, nf, &is_dir, &length, NULL, NULL);
     vnode_t *vn = p9_make_vnode(c, nf, is_dir, length);
     if (!vn) { p9_clunk(c, nf); return -ENOMEM; }
     *out = vn;
@@ -270,12 +273,16 @@ static int64_t p9_write_op(vnode_t *node, const void *buf, size_t len, uint64_t 
 static int p9_stat_op(vnode_t *node, vfs_stat_t *out) {
     p9_node_t *n = node->fs_data;
     int is_dir = n->is_dir; uint64_t length = n->length;
-    p9_stat(n->conn, n->fid, &is_dir, &length);
+    int64_t atime = 0, mtime = 0;
+    p9_stat(n->conn, n->fid, &is_dir, &length, &atime, &mtime);
     n->is_dir = is_dir; n->length = length; node->size = length;
     memset(out, 0, sizeof *out);
     out->st_type = is_dir ? VFS_NODE_DIR : VFS_NODE_FILE;
     out->st_size = length;
     out->st_mode = is_dir ? 0755 : 0644;
+    out->st_atime = atime;
+    out->st_mtime = mtime;
+    out->st_ctime = mtime;
     return 0;
 }
 
@@ -306,6 +313,6 @@ vnode_t *ninep_mount(uint32_t ip, uint16_t port) {
     if (tcp_connect(ip, port, &c->tcb) != 0 || !c->tcb) { kfree(c->wbuf); kfree(c->rbuf); kfree(c); return NULL; }
     if (p9_version(c) != 0 || p9_attach(c, 0) != 0) { tcp_close(c->tcb); kfree(c->wbuf); kfree(c->rbuf); kfree(c); return NULL; }
     int is_dir = 1; uint64_t length = 0;
-    p9_stat(c, 0, &is_dir, &length);
+    p9_stat(c, 0, &is_dir, &length, NULL, NULL);
     return p9_make_vnode(c, 0, 1, length);
 }

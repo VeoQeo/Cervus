@@ -231,6 +231,7 @@ int initramfs_mount(const void *data, size_t size) {
 
         uint64_t file_size = octal_parse(hdr->size, sizeof(hdr->size));
         uint32_t mode      = (uint32_t)octal_parse(hdr->mode, sizeof(hdr->mode));
+        int64_t  mtime     = (int64_t)octal_parse(hdr->mtime, sizeof(hdr->mtime));
 
         char raw[VFS_MAX_PATH];
         if (hdr->prefix[0]) {
@@ -266,6 +267,7 @@ int initramfs_mount(const void *data, size_t size) {
                 int r = mkdir_p(abspath);
                 if (r == 0) {
                     if (mode & 0777) vfs_chmod(abspath, mode);
+                    if (mtime > 0) vfs_set_times(abspath, mtime, mtime);
                     LOG_D("[initramfs] dir  %s\n", abspath);
                     dirs_ok++;
                 } else {
@@ -282,6 +284,7 @@ int initramfs_mount(const void *data, size_t size) {
             int r = write_file(abspath, filedata, (size_t)file_size,
                                mode ? mode : 0644);
             if (r == 0) {
+                if (mtime > 0) vfs_set_times(abspath, mtime, mtime);
                 LOG_D("[initramfs] file %s (%llu bytes)\n",
                               abspath, (unsigned long long)file_size);
                 files_ok++;

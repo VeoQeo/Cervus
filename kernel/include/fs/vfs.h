@@ -57,6 +57,9 @@ typedef struct {
 } vfs_dirent_t;
 
 int64_t clock_realtime_sec(void);
+int64_t vfs_boot_time(void);
+int64_t vfs_make_time(int year, int mon, int day, int hour, int min, int sec);
+int     vfs_set_times(const char *path, int64_t atime, int64_t mtime);
 
 typedef struct vnode     vnode_t;
 typedef struct vfs_mount vfs_mount_t;

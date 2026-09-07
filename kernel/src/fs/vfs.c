@@ -786,3 +786,38 @@ int vfs_statvfs(const char *path, vfs_statvfs_t *out) {
     out->f_namemax = 255;
     return 0;
 }
+static int64_t g_boot_time;
+
+int64_t vfs_boot_time(void) {
+    if (g_boot_time == 0) g_boot_time = clock_realtime_sec();
+    return g_boot_time;
+}
+
+int64_t vfs_make_time(int year, int mon, int day, int hour, int min, int sec) {
+    if (year < 1970 || year > 2200) return 0;
+    if (mon < 1 || mon > 12) return 0;
+    if (day < 1 || day > 31) return 0;
+    if (hour < 0 || hour > 23 || min < 0 || min > 59 || sec < 0 || sec > 60) return 0;
+
+    static const int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    int64_t days = 0;
+    for (int y = 1970; y < year; y++)
+        days += ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0) ? 366 : 365;
+    for (int m = 1; m < mon; m++) {
+        days += mdays[m - 1];
+        if (m == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) days++;
+    }
+    days += day - 1;
+    return days * 86400LL + (int64_t)hour * 3600LL + (int64_t)min * 60LL + sec;
+}
+
+int vfs_set_times(const char *path, int64_t atime, int64_t mtime) {
+    if (!path) return -EINVAL;
+    vnode_t *node = NULL;
+    int ret = vfs_lookup(path, &node);
+    if (ret < 0) return ret;
+    if (atime > 0) node->atime = atime;
+    if (mtime > 0) { node->mtime = mtime; node->ctime = mtime; }
+    vnode_unref(node);
+    return 0;
+}
