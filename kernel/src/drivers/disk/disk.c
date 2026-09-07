@@ -368,8 +368,12 @@ void fmt_progress_begin(void) { g_fmt_pct = 0; }
 void fmt_progress_set(int pct) {
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
-    g_fmt_pct = pct;
+    if (pct != g_fmt_pct) {
+        g_fmt_pct = pct;
+        task_yield();
+    }
 }
+void fmt_progress_yield(void) { if (g_fmt_pct >= 0) task_yield(); }
 void fmt_progress_end(void) { g_fmt_pct = -1; }
 int  fmt_progress_get(void) { return g_fmt_pct; }
 

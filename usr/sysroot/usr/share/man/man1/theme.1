@@ -1,0 +1,49 @@
+NAME
+       theme - console colour scheme, palette and background
+
+SYNOPSIS
+       theme
+       theme <name> [--once]
+       theme bg #RRGGBB
+       theme fg #RRGGBB
+       theme -r
+
+DESCRIPTION
+       Sets the sixteen colours the console draws with, the default
+       text colour and the background. With no arguments it prints the
+       current scheme and lists the rest, drawing each one in its own
+       colours so the listing shows what you would get.
+
+       The choice is written to /etc/console.conf and restored at boot,
+       next to the console font. --once applies a scheme without
+       saving it, and -r returns to the original palette and forgets
+       the file.
+
+       bg and fg change one colour on its own, taking a hex value with
+       or without the leading #.
+
+       Changing the scheme clears the screen: cells keep the colours
+       they were written with, so leaving the old ones in place would
+       show half the screen in the previous palette.
+
+SCHEMES
+       classic      the VGA palette the console started with
+       cervus       soft slate, meant for long sessions
+       gruv         warm, low contrast
+       solar        muted blue-grey
+       paper        dark text on a light page
+       matrix       green on black and nothing else
+       dracula      purple night
+       catppuccin   mocha, warm and muted
+       latte        the same in daylight
+       nord         cold blue, low contrast
+       rose         dusty pink and mauve
+       sand, mint   pastel, one warm and one cool
+       amber        an old amber terminal
+       mono         grey scale
+
+FILES
+       /etc/console.conf
+
+SEE ALSO
+       setfont(1), mode(1), csh(1)

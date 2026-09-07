@@ -1,0 +1,30 @@
+NAME
+       mode - screen resolution
+
+SYNOPSIS
+       mode
+       mode <width>x<height>
+       mode <width> <height>
+
+DESCRIPTION
+       Lists the resolutions the display adapter offers, marking the
+       one in use, and switches to another. The console reflows to the
+       new size the way it does after a font change, so the terminals
+       keep their contents.
+
+       This works on the Bochs adapter, which is what QEMU, Bochs and
+       VirtualBox present. Real graphics chips need a driver of their
+       own and have none here; on such a machine the command says so
+       and the resolution stays as the bootloader set it.
+
+       Full-screen programs read the size when they start, so restart
+       anything already running after a switch.
+
+NOTES
+       Resolution cannot be changed through the firmware once the
+       system is running: the BIOS video calls are unreachable in long
+       mode and the UEFI graphics protocol is gone after boot. What is
+       possible is what the adapter itself exposes.
+
+SEE ALSO
+       theme(1), setfont(1), framebuffer(2)

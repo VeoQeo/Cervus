@@ -77,6 +77,7 @@ static const tz_entry_t TZONES[] = {
 #define N_TZONES ((int)(sizeof TZONES / sizeof TZONES[0]))
 
 static int g_tz_index = 0;
+static int g_rtc_is_local = 0;
 
 
 typedef struct {
@@ -1390,7 +1391,8 @@ static void apply_accounts(const account_cfg_t *a) {
     {
         char tz[128];
         int tn = snprintf(tz, sizeof tz, "%s %d\n",
-                          TZONES[g_tz_index].zone, TZONES[g_tz_index].minutes);
+                          TZONES[g_tz_index].zone,
+                          g_rtc_is_local ? 0 : TZONES[g_tz_index].minutes);
         unlink("/mnt/root/etc/timezone");
         fd = open("/mnt/root/etc/timezone", O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd >= 0) { write(fd, tz, (size_t)tn); close(fd); }
@@ -1774,6 +1776,41 @@ static void info_timezone(int row, int col, int w) {
     info_print(&row, col, w, 1, "/etc/timezone.");
 }
 
+static void info_rtcmode(int row, int col, int w) {
+    info_print(&row, col, w, 1, "What the hardware clock in this machine");
+    info_print(&row, col, w, 1, "is already set to.");
+    info_print(&row, col, w, 1, "");
+    info_print(&row, col, w, 0, "UTC:");
+    info_print(&row, col, w, 1, "  The clock keeps universal time and the");
+    info_print(&row, col, w, 1, "  zone offset is added when a time is");
+    info_print(&row, col, w, 1, "  shown. This is what Linux does.");
+    info_print(&row, col, w, 1, "");
+    info_print(&row, col, w, 0, "Local time:");
+    info_print(&row, col, w, 1, "  The BIOS clock already shows the wall");
+    info_print(&row, col, w, 1, "  clock of your zone. This is what");
+    info_print(&row, col, w, 1, "  Windows does, and what most laptops");
+    info_print(&row, col, w, 1, "  are left on.");
+    info_print(&row, col, w, 1, "");
+    info_print(&row, col, w, 1, "Choosing wrong shifts every time by the");
+    info_print(&row, col, w, 1, "size of the offset, in one direction or");
+    info_print(&row, col, w, 1, "the other.");
+}
+
+static int choose_rtc_mode(void) {
+    const char *items[] = {
+        "Local time  (BIOS already shows your wall clock)",
+        "UTC         (BIOS keeps universal time)",
+        "Back",
+    };
+    for (;;) {
+        int sel = menu_in_box("Hardware clock", items, 3, g_rtc_is_local ? 0 : 1,
+                              info_rtcmode);
+        if (sel < 0 || sel == 2) return -1;
+        g_rtc_is_local = (sel == 0);
+        return 0;
+    }
+}
+
 static int choose_timezone(void) {
     const char *items[N_TZONES + 1];
     for (int i = 0; i < N_TZONES; i++) items[i] = TZONES[i].label;
@@ -2121,6 +2158,7 @@ static int do_main_install_flow(disk_entry_t *disks, int n_disks) {
             L.fs = (fstype_t)fs;
         }
         if (choose_timezone() < 0) continue;
+        if (choose_rtc_mode() < 0) continue;
         if (confirm_screen(&disks[picked], &L) != 1) continue;
 
         account_cfg_t acc;

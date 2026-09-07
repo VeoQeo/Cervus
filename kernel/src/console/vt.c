@@ -42,7 +42,12 @@ static uint32_t g_cols, g_rows;
 int vt_active(void) { return g_active; }
 
 static vt_cell_t *grid_alloc(void) {
-    return (vt_cell_t *)kzalloc((size_t)g_cols * g_rows * sizeof(vt_cell_t));
+    size_t n = (size_t)g_cols * g_rows;
+    vt_cell_t *g = (vt_cell_t *)kzalloc(n * sizeof(vt_cell_t));
+    if (!g) return NULL;
+    uint32_t fg = console_theme_fg(), bg = console_theme_bg();
+    for (size_t i = 0; i < n; i++) { g[i].ch = ' '; g[i].fg = fg; g[i].bg = bg; }
+    return g;
 }
 
 void vt_init(void) {
@@ -260,27 +265,30 @@ void vt_mark_shell_running(int n, int running) {
     if (!running) g_vts[n].needs_shell = 0;
 }
 
-void vt_theme_changed(void) {
+void vt_theme_changed(const uint32_t old_pal[16], uint32_t old_fg, uint32_t old_bg) {
     if (!g_inited || !global_framebuffer) return;
     uint64_t f = spinlock_acquire_irqsave(&g_lock);
 
-    uint32_t bg = console_theme_bg();
     for (int i = 0; i < VT_COUNT; i++) {
-        if (!g_vts[i].grid) continue;
-        size_t n = (size_t)g_cols * g_rows;
-        for (size_t c = 0; c < n; c++) {
-            g_vts[i].grid[c].ch = ' ';
-            g_vts[i].grid[c].fg = console_theme_fg();
-            g_vts[i].grid[c].bg = bg;
+        if (g_vts[i].grid) {
+            size_t n = (size_t)g_cols * g_rows;
+            for (size_t c = 0; c < n; c++) {
+                g_vts[i].grid[c].fg = console_theme_remap(g_vts[i].grid[c].fg,
+                                                          old_pal, old_fg, old_bg);
+                g_vts[i].grid[c].bg = console_theme_remap(g_vts[i].grid[c].bg,
+                                                          old_pal, old_fg, old_bg);
+            }
         }
-        g_vts[i].state.cursor_x = 0;
-        g_vts[i].state.cursor_y = 0;
+        g_vts[i].state.text_color = console_theme_remap(g_vts[i].state.text_color,
+                                                        old_pal, old_fg, old_bg);
+        g_vts[i].state.bg_color   = console_theme_remap(g_vts[i].state.bg_color,
+                                                        old_pal, old_fg, old_bg);
     }
 
-    console_reset_state();
     console_save_state(&g_vts[g_active].state);
     fb_fill_rect(global_framebuffer, 0, 0,
-                 global_framebuffer->width, global_framebuffer->height, bg);
+                 global_framebuffer->width, global_framebuffer->height,
+                 console_theme_bg());
     console_redraw_grid();
     fb_flush(global_framebuffer);
     spinlock_release_irqrestore(&g_lock, f);

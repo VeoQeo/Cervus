@@ -1088,30 +1088,102 @@ static int cmd_cursor(int argc, char **argv);
 static int cmd_layout(int argc, char **argv);
 static int cmd_reload(int argc, char **argv);
 
-static void cmd_help(void) {
+static void help_shell(void) {
+    fputs("\n  " C_CYAN "Shell built-ins" C_RESET "\n", stdout);
+    fputs("  " C_BOLD "cd" C_RESET " <dir>              change directory   (cd - goes back)\n", stdout);
+    fputs("  " C_BOLD "set" C_RESET " N=V              shell variable\n", stdout);
+    fputs("  " C_BOLD "setenv/export" C_RESET " N V    environment variable\n", stdout);
+    fputs("  " C_BOLD "unset/unsetenv" C_RESET " N     remove one\n", stdout);
+    fputs("  " C_BOLD "alias" C_RESET " N=V            shorthand      (" C_BOLD "unalias" C_RESET " N)\n", stdout);
+    fputs("  " C_BOLD "history" C_RESET " [N|-c]       recent commands, or clear them\n", stdout);
+    fputs("  " C_BOLD "jobs/fg/bg" C_RESET " [%N]      background jobs\n", stdout);
+    fputs("  " C_BOLD "color" C_RESET " / " C_BOLD "cursor" C_RESET "         input colour and cursor shape, saved\n", stdout);
+    fputs("  " C_BOLD "exit" C_RESET "                 leave the shell\n", stdout);
+    fputs("\n  Settings live in ~/.cshrc and /etc/cshrc.\n", stdout);
+}
+
+static void help_syntax(void) {
+    fputs("\n  " C_CYAN "Scripting" C_RESET "\n", stdout);
+    fputs("  " C_BOLD "Blocks" C_RESET "      if/else/endif   foreach/end   while/end   break   continue\n", stdout);
+    fputs("  " C_BOLD "Math" C_RESET "        @ x = expr    + - * / %  & | ^ ~ << >>  ( )  hex    @ x++\n", stdout);
+    fputs("  " C_BOLD "Compare" C_RESET "     == != < > <= >=\n", stdout);
+    fputs("  " C_BOLD "Glob" C_RESET "        * ? [...]        " C_BOLD "Random" C_RESET "  $RANDOM (0..32767)\n", stdout);
+    fputs("  " C_BOLD "Operators" C_RESET "   " C_YELLOW ";" C_RESET "  " C_YELLOW "&&" C_RESET "  " C_YELLOW "||" C_RESET "  " C_YELLOW "|" C_RESET "  " C_YELLOW ">" C_RESET "  " C_YELLOW ">>" C_RESET "  " C_YELLOW "<" C_RESET "  " C_YELLOW "&" C_RESET "\n", stdout);
+    fputs("\n  A file starting with #!/bin/csh runs as a script once chmod +x.\n", stdout);
+}
+
+static void help_keys(void) {
+    fputs("\n  " C_CYAN "Keys" C_RESET "\n", stdout);
+    fputs("  " C_BOLD "Tab" C_RESET "                completion, cycles through matches\n", stdout);
+    fputs("  " C_BOLD "Up/Down" C_RESET "            history          " C_BOLD "Right/Ctrl-F" C_RESET "  take the suggestion\n", stdout);
+    fputs("  " C_BOLD "Ctrl-A/E" C_RESET "           start/end of line\n", stdout);
+    fputs("  " C_BOLD "Ctrl-K/U/W" C_RESET "         delete to end / to start / previous word\n", stdout);
+    fputs("  " C_BOLD "Ctrl-C" C_RESET "             interrupt the running command\n", stdout);
+    fputs("  " C_BOLD "Ctrl-Alt-F1..F12" C_RESET "   switch virtual terminal; F2 is the debug log\n", stdout);
+    fputs("  " C_BOLD "Alt-Shift" C_RESET "          switch keyboard layout\n", stdout);
+}
+
+static void help_system(void) {
+    fputs("\n  " C_CYAN "Looking around" C_RESET "\n", stdout);
+    fputs("  ls  cat  less  find  grep  du  df  stat  file listing and inspection\n", stdout);
+    fputs("  ps  top  sysmon  kill  killall            processes\n", stdout);
+    fputs("  uname  uptime  meminfo  cpuinfo  fetch    what this machine is\n", stdout);
+    fputs("  dmesg  lspci  lsusb  lsblk                what the kernel found\n", stdout);
+    fputs("\n  " C_CYAN "Disks and files" C_RESET "\n", stdout);
+    fputs("  mount  umount  mkfs  fdisk  mkpart  wipefs  eject\n", stdout);
+    fputs("  cfm      file manager, preview pane, GIF playback\n", stdout);
+    fputs("  neo      text editor        " C_BOLD "hexed" C_RESET "  hex viewer and editor\n", stdout);
+    fputs("\n  " C_CYAN "Network" C_RESET "\n", stdout);
+    fputs("  ifconfig  ping  nslookup  setdns  ip  nmap  nc\n", stdout);
+    fputs("  wget  curl  ftp  httpd       ssh  sshd  ssh-keygen  9p\n", stdout);
+    fputs("\n  " C_CYAN "Screen and sound" C_RESET "\n", stdout);
+    fputs("  theme    colour scheme, background and palette\n", stdout);
+    fputs("  setfont  console font, PSF or TrueType\n", stdout);
+    fputs("  mode     screen resolution, where the adapter allows it\n", stdout);
+    fputs("  mixer    volume, mute and output device\n", stdout);
+    fputs("  play     WAV and MP3        " C_BOLD "img" C_RESET "  PNG, JPEG, BMP, SVG, GIF\n", stdout);
+    fputs("\n  " C_CYAN "Accounts" C_RESET "\n", stdout);
+    fputs("  login  su  sudo  passwd  useradd  userdel  usermod  groups  id  whoami\n", stdout);
+}
+
+static void help_docs(void) {
+    fputs("\n  " C_CYAN "Finding things out" C_RESET "\n", stdout);
+    fputs("  " C_BOLD "man" C_RESET " <name>           the manual page for a command\n", stdout);
+    fputs("  " C_BOLD "man" C_RESET " 2 <name>         section 2 is system calls, 3 is libraries\n", stdout);
+    fputs("  " C_BOLD "apropos" C_RESET " <word>       search the manuals by description\n", stdout);
+    fputs("  " C_BOLD "<cmd> --help" C_RESET "         short usage, on every command\n", stdout);
+    fputs("  " C_BOLD "ls /bin /apps" C_RESET "        everything installed\n", stdout);
+    fputs("\n  ~/welcome.txt has a short tour of the system.\n", stdout);
+}
+
+static void cmd_help(int argc, char **argv) {
+    const char *topic = (argc > 1) ? argv[1] : NULL;
+
+    if (topic) {
+        if (!strcmp(topic, "shell")  || !strcmp(topic, "builtins")) { help_shell();  putchar(10); return; }
+        if (!strcmp(topic, "syntax") || !strcmp(topic, "script"))   { help_syntax(); putchar(10); return; }
+        if (!strcmp(topic, "keys"))                                  { help_keys();   putchar(10); return; }
+        if (!strcmp(topic, "system") || !strcmp(topic, "commands"))  { help_system(); putchar(10); return; }
+        if (!strcmp(topic, "docs")   || !strcmp(topic, "man"))       { help_docs();   putchar(10); return; }
+        if (!strcmp(topic, "all")) {
+            help_shell(); help_syntax(); help_keys(); help_system(); help_docs();
+            putchar(10);
+            return;
+        }
+        printf("  no help topic '%s'\n", topic);
+    }
+
     putchar(10);
-    fputs("  " C_CYAN "Cervus csh" C_RESET " - interactive shell + scripting\n", stdout);
-    fputs("  " C_GRAY "-----------------------------------" C_RESET "\n", stdout);
-    fputs("  " C_BOLD "cd" C_RESET " <dir>         change directory\n", stdout);
-    fputs("  " C_BOLD "set" C_RESET " N=V          set shell variable\n", stdout);
-    fputs("  " C_BOLD "setenv/export" C_RESET " N V  set environment variable\n", stdout);
-    fputs("  " C_BOLD "unset/unsetenv" C_RESET " N  delete a variable\n", stdout);
-    fputs("  " C_BOLD "alias" C_RESET " N=V        define alias  (" C_BOLD "unalias" C_RESET " N)\n", stdout);
-    fputs("  " C_BOLD "history" C_RESET " [N|-c]   show last N entries or clear (-c)\n", stdout);
-    fputs("  " C_BOLD "jobs/fg/bg" C_RESET " [%N]  background jobs control\n", stdout);
-    fputs("  " C_BOLD "color" C_RESET " [name|#RRGGBB|R,G,B]  input text color (saved)\n", stdout);
-    fputs("  " C_BOLD "cursor" C_RESET " [block|underline|bar]  cursor shape (saved)\n", stdout);
-    fputs("  " C_BOLD "exit" C_RESET "             quit shell\n", stdout);
-    fputs("  " C_GRAY "-----------------------------------" C_RESET "\n", stdout);
-    fputs("  " C_BOLD "Blocks:" C_RESET "  if/else/endif  foreach/end  while/end  break  continue  (multi-line or one-line)\n", stdout);
-    fputs("  " C_BOLD "Math:" C_RESET "  @ x = expr   (+ - * / %  & | ^ ~ << >>  ( ) hex)   @ x ++/--\n", stdout);
-    fputs("  " C_BOLD "Compare:" C_RESET "  == != < > <= >=   " C_BOLD "Random:" C_RESET " $RANDOM (0..32767)\n", stdout);
-    fputs("  " C_BOLD "Glob:" C_RESET "  * ? [...]   " C_BOLD "Background:" C_RESET " cmd &\n", stdout);
-    fputs("  " C_BOLD "Operators:" C_RESET "  " C_YELLOW ";" C_RESET "   " C_YELLOW "&&" C_RESET "   " C_YELLOW "||" C_RESET "   " C_YELLOW "|" C_RESET "   " C_YELLOW ">" C_RESET "   " C_YELLOW ">>" C_RESET "   " C_YELLOW "<" C_RESET "\n", stdout);
-    fputs("  " C_BOLD "Tab" C_RESET "          smart completion (cycle, colored, autosuggest)\n", stdout);
-    fputs("  " C_BOLD "Ctrl+A/E" C_RESET "     beginning/end of line  " C_BOLD "Ctrl+K/U/W" C_RESET " delete\n", stdout);
-    fputs("  " C_BOLD "Up/Down" C_RESET "      command history     " C_BOLD "Right/Ctrl+F" C_RESET " accept suggestion\n", stdout);
-    fputs("  " C_GRAY "-----------------------------------" C_RESET "\n", stdout);
+    fputs("  " C_CYAN "Cervus" C_RESET " - an x86_64 operating system written from scratch\n", stdout);
+    fputs("  " C_GRAY "----------------------------------------------------------" C_RESET "\n", stdout);
+    fputs("  " C_BOLD "help shell" C_RESET "     built-in commands and where settings live\n", stdout);
+    fputs("  " C_BOLD "help syntax" C_RESET "    loops, arithmetic, pipes and redirection\n", stdout);
+    fputs("  " C_BOLD "help keys" C_RESET "      line editing and terminal switching\n", stdout);
+    fputs("  " C_BOLD "help system" C_RESET "    the commands that come with the system\n", stdout);
+    fputs("  " C_BOLD "help docs" C_RESET "      manual pages and how to search them\n", stdout);
+    fputs("  " C_BOLD "help all" C_RESET "       every section at once\n", stdout);
+    fputs("  " C_GRAY "----------------------------------------------------------" C_RESET "\n", stdout);
+    fputs("  " C_BOLD "man" C_RESET " <name> for any command, " C_BOLD "apropos" C_RESET " <word> to search by what it does.\n", stdout);
     putchar(10);
 }
 
@@ -1251,7 +1323,7 @@ static int exec_tokens(char **tok, int n) {
         if (aval) tok[0] = (char *)aval;
     }
 
-    if (strcmp(tok[0], "help") == 0)    { cmd_help(); rc_set(0); return 0; }
+    if (strcmp(tok[0], "help") == 0)    { cmd_help(n, tok); rc_set(0); return 0; }
     if (strcmp(tok[0], "alias") == 0)   { int rc = cmd_alias(n, tok);   rc_set(rc); return rc; }
     if (strcmp(tok[0], "unalias") == 0) { int rc = cmd_unalias(n, tok); rc_set(rc); return rc; }
     if (strcmp(tok[0], "export") == 0)  { int rc = cmd_export(n, tok);  rc_set(rc); return rc; }

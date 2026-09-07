@@ -70,8 +70,12 @@ typedef struct {
 } console_theme_t;
 
 void console_set_theme(const uint32_t pal[16], uint32_t fg, uint32_t bg);
+void console_get_theme(uint32_t pal[16], uint32_t *fg, uint32_t *bg);
+uint32_t console_theme_remap(uint32_t colour, const uint32_t old_pal[16],
+                             uint32_t old_fg, uint32_t old_bg);
 uint32_t console_theme_fg(void);
 uint32_t console_theme_bg(void);
-void vt_theme_changed(void);
+void console_theme_load_config(void);
+void vt_theme_changed(const uint32_t old_pal[16], uint32_t old_fg, uint32_t old_bg);
 
 #endif

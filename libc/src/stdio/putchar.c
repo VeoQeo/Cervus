@@ -351,12 +351,32 @@ static uint32_t ansi_color(int code, int bright) {
     return theme_pal[(bright ? 8 : 0) + (code & 7)];
 }
 
+void console_get_theme(uint32_t pal[16], uint32_t *fg, uint32_t *bg) {
+    if (pal) for (int i = 0; i < 16; i++) pal[i] = theme_pal[i];
+    if (fg) *fg = theme_fg;
+    if (bg) *bg = theme_bg;
+}
+
+uint32_t console_theme_remap(uint32_t colour, const uint32_t old_pal[16],
+                             uint32_t old_fg, uint32_t old_bg) {
+    if (colour == old_fg) return theme_fg;
+    if (colour == old_bg) return theme_bg;
+    if (old_pal)
+        for (int i = 0; i < 16; i++)
+            if (colour == old_pal[i]) return theme_pal[i];
+    return colour;
+}
+
 void console_set_theme(const uint32_t pal[16], uint32_t fg, uint32_t bg) {
+    uint32_t old_pal[16], old_fg = theme_fg, old_bg = theme_bg;
+    for (int i = 0; i < 16; i++) old_pal[i] = theme_pal[i];
+
     if (pal) for (int i = 0; i < 16; i++) theme_pal[i] = pal[i] & 0xFFFFFF;
     theme_fg = fg & 0xFFFFFF;
     theme_bg = bg & 0xFFFFFF;
-    text_color = theme_fg;
-    bg_color   = theme_bg;
+
+    text_color = console_theme_remap(text_color, old_pal, old_fg, old_bg);
+    bg_color   = console_theme_remap(bg_color,   old_pal, old_fg, old_bg);
 }
 
 #define ESC_MAX_PARAMS 8
@@ -817,7 +837,7 @@ void console_load_state(const console_state_t *s) {
 
 void console_reset_state(void) {
     cursor_x = 0; cursor_y = 0;
-    text_color = COLOR_WHITE; bg_color = COLOR_BLACK;
+    text_color = theme_fg; bg_color = theme_bg;
     cursor_visible = 1; autowrap = 1; flush_inhibit = 0;
     scroll_buffer_index = 0; total_scroll_lines = 0;
     dirty_y_min = 0xFFFFFFFFu; dirty_y_max = 0;
@@ -827,8 +847,8 @@ void console_reset_state(void) {
 }
 
 void console_reset_attrs(void) {
-    text_color = COLOR_WHITE;
-    bg_color = COLOR_BLACK;
+    text_color = theme_fg;
+    bg_color = theme_bg;
     cursor_visible = 1;
     autowrap = 1;
     ps_state = PS_NORMAL;

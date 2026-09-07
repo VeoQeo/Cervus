@@ -1217,6 +1217,7 @@ int fat32_format(blkdev_t *dev, const char *label) {
                 uint32_t pct = (done * 100) / fat_size;
                 if (pct != last_pct) {
                     fmt_progress_set((int)((f * 100 + pct) / num_fats));
+                    fmt_progress_yield();
                     const char glyphs[4] = { '|', '/', '-', '\\' };
                     serial_printf("\r\033[K       %c FAT#%u: %u%%",
                            glyphs[spinner & 3], f, pct);

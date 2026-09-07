@@ -382,6 +382,8 @@ void kmain(void) {
             printf("root: initramfs (%llu KiB)\n",
                    (unsigned long long)(tar->size / 1024));
             serial_writestring("[initramfs] mounted OK\n");
+            console_theme_load_config();
+            (void)vfs_boot_time();
         } else {
             printf("root: initramfs mount failed (%d)\n", r);
             serial_printf("[initramfs] mount FAILED: %d\n", r);

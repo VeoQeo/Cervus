@@ -8,10 +8,16 @@
 
 extern fb_info_t *global_framebuffer;
 
-#define MON_FG        0xAAAAAA
-#define MON_BG        0x000000
-#define MON_STATUS_FG 0x000000
-#define MON_STATUS_BG 0x00AAAA
+static uint32_t mon_pal(int idx) {
+    uint32_t pal[16];
+    console_get_theme(pal, NULL, NULL);
+    return pal[idx & 15];
+}
+
+#define MON_FG        console_theme_fg()
+#define MON_BG        console_theme_bg()
+#define MON_STATUS_FG console_theme_bg()
+#define MON_STATUS_BG mon_pal(6)
 
 enum { MON_LIVE, MON_PAUSED, MON_SEARCH };
 
@@ -48,10 +54,10 @@ static void mon_draw_line(uint32_t row, const char *s, uint32_t fg, uint32_t bg)
     }
 }
 
-#define MON_CUR_FG 0x000000
-#define MON_CUR_BG 0x8899AA
-#define MON_HIT_FG 0x000000
-#define MON_HIT_BG 0xD0B000
+#define MON_CUR_FG console_theme_bg()
+#define MON_CUR_BG mon_pal(12)
+#define MON_HIT_FG console_theme_bg()
+#define MON_HIT_BG mon_pal(11)
 
 static uint32_t mon_line_rows(const char *s) {
     uint32_t cols = mon_cols();

@@ -135,6 +135,22 @@ static void restore_console_theme(void) {
     waitpid(child, &status, 0);
 }
 
+static void sync_clock_from_network(void) {
+    struct stat st;
+    if (stat("/etc/ntp", &st) != 0 && stat("/mnt/etc/ntp", &st) != 0) return;
+    if (stat("/bin/ntpdate", &st) != 0) return;
+
+    pid_t child = fork();
+    if (child < 0) return;
+    if (child == 0) {
+        int devnull = open("/dev/null", O_WRONLY, 0);
+        if (devnull >= 0) { dup2(devnull, 1); dup2(devnull, 2); close(devnull); }
+        const char *argv[2] = { "/bin/ntpdate", NULL };
+        execve("/bin/ntpdate", (char *const *)argv, environ);
+        _exit(127);
+    }
+}
+
 static void read_default_shell(void) {
     int fd = open("/mnt/etc/shell", O_RDONLY, 0);
     if (fd < 0) fd = open("/etc/shell", O_RDONLY, 0);
@@ -267,6 +283,7 @@ int main(void) {
 
     restore_console_font();
     restore_console_theme();
+    sync_clock_from_network();
     restore_audio_settings();
 
     boot_stage("spawning shell on vt0");

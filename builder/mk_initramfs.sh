@@ -27,6 +27,7 @@ chmod 1777 "$RFS/tmp"
 chmod 0700 "$RFS/root"
 printf 'cervus'                          > "$RFS/etc/hostname"
 printf '/bin/csh\n'                      > "$RFS/etc/shell"
+printf 'pool.ntp.org\n'                  > "$RFS/etc/ntp"
 
 cat > "$RFS/etc/motd" <<EOF
 
@@ -89,14 +90,31 @@ fi
 cat > "$RFS/etc/skel/welcome.txt" <<EOF
 Welcome to Cervus!
 
-Tips:
-  - Use arrow keys to move cursor within a command
-  - Use Up/Down to browse command history (saved in ~/.history)
-  - Press Tab to autocomplete commands and paths
-  - Binaries are in /bin and /apps
+Getting around
+  help              what the shell itself can do
+  man <name>        manual page for a command
+  apropos <word>    find a command by what it does
+  ls /bin /apps     everything installed
 
-Cervus OS v0.0.2 - an x86_64 OS written in C.
-Source: https://github.com/VeoQeo/Cervus
+Editing the terminal
+  theme             colour schemes; 'theme cervus' is easier on the eyes
+  setfont <file>    console font, PSF or TrueType, from /usr/share/fonts
+  mode              screen resolution, where the adapter allows it
+
+Line editing
+  Left/Right        move within the command
+  Up/Down           history, kept in ~/.history
+  Tab               complete commands and paths
+  Ctrl-C            interrupt what is running
+  Ctrl-Alt-F1..F12  switch between virtual terminals; F2 is the debug log
+
+Files and disks
+  cfm               file manager with a preview pane
+  neo               text editor
+  lsblk / mount     what is attached, and how to reach it
+
+Cervus OS v0.0.2 - an x86_64 operating system written from scratch in C.
+Source: https://github.com/VeoQeoOrg/Cervus
 EOF
 chmod 0644 "$RFS/etc/skel/welcome.txt"
 

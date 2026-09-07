@@ -1,0 +1,23 @@
+NAME
+       apropos - search the manual pages by description
+
+SYNOPSIS
+       apropos [-s section] word ...
+
+DESCRIPTION
+       Reads the NAME line of every manual page and prints those whose
+       name or description contains WORD, ignoring case. This is how to
+       find a command when you know what it should do but not what it
+       is called.
+
+OPTIONS
+       -s N   search only section N: 1 commands, 2 system calls,
+              3 library functions
+
+EXAMPLES
+       apropos disk
+       apropos -s 2 socket
+       apropos colour
+
+SEE ALSO
+       man(1)

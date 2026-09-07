@@ -1066,6 +1066,313 @@ static const vnode_ops_t udf_dir_ops = {
     .unref   = udf_unref,
 };
 
+static void udf_mk_tag(uint8_t *desc, uint16_t tag_id, uint16_t desc_ver,
+                       uint16_t serial, uint16_t crc_len, uint32_t tag_loc) {
+    wr16(desc + 0, tag_id);
+    wr16(desc + 2, desc_ver);
+    desc[4] = 0;
+    desc[5] = 0;
+    wr16(desc + 6, serial);
+    wr16(desc + 8, udf_crc(desc + 16, crc_len));
+    wr16(desc + 10, crc_len);
+    wr32(desc + 12, tag_loc);
+    uint8_t sum = 0;
+    for (int i = 0; i < 16; i++) if (i != 4) sum += desc[i];
+    desc[4] = sum;
+}
+
+static void udf_dstring(uint8_t *p, size_t cap, const char *s) {
+    memset(p, 0, cap);
+    if (!s || !*s) return;
+    size_t n = strlen(s);
+    if (n > cap - 2) n = cap - 2;
+    p[0] = 8;
+    for (size_t i = 0; i < n; i++) p[1 + i] = (uint8_t)s[i];
+    p[cap - 1] = (uint8_t)(n + 1);
+}
+
+static void udf_regid(uint8_t *p, const char *id) {
+    memset(p, 0, 32);
+    size_t n = strlen(id);
+    if (n > 23) n = 23;
+    memcpy(p + 1, id, n);
+}
+
+static void udf_charspec(uint8_t *p) {
+    memset(p, 0, 64);
+    p[0] = 0;
+    memcpy(p + 1, "OSTA Compressed Unicode", 23);
+}
+
+#define UDF_FMT_VDS      128
+#define UDF_FMT_VDS_LEN  16
+#define UDF_FMT_RVDS     144
+#define UDF_FMT_LVID     176
+#define UDF_FMT_PART     300
+
+int udf_format(blkdev_t *dev, const char *label) {
+    if (!dev) return -EINVAL;
+    uint32_t bs = dev->sector_size;
+    if (bs < 512 || bs > 4096) return -EINVAL;
+
+    uint64_t total = dev->sector_count;
+    if (total < UDF_FMT_PART + 64) return -EINVAL;
+
+    uint32_t part_start = UDF_FMT_PART;
+    if (total < part_start + 320) { return -EINVAL; }
+    uint32_t part_len   = (uint32_t)(total - part_start - 257);
+    const uint16_t dv = 0x0102, serial = 1;
+    int64_t now = clock_realtime_sec();
+
+    uint32_t bitmap_block   = 1;
+    uint32_t bitmap_nbits   = part_len;
+    uint32_t bitmap_nbytes  = (bitmap_nbits + 7) / 8;
+    uint32_t bitmap_sectors = (24 + bitmap_nbytes + bs - 1) / bs;
+    uint32_t bitmap_extent  = bitmap_sectors * bs;
+    uint32_t root_block     = 1 + bitmap_sectors;
+    uint32_t used_blocks    = root_block + 1;
+
+    uint8_t *sec = kzalloc(bs);
+    if (!sec) return -ENOMEM;
+
+    for (uint64_t lba = 0; lba < UDF_FMT_PART + 8 && lba < total; lba++) {
+        memset(sec, 0, bs);
+        if (blkdev_write(dev, lba * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+    }
+
+    {
+        uint8_t vrs[2048];
+        static const char *ids[3] = { "BEA01", "NSR02", "TEA01" };
+        for (int i = 0; i < 3; i++) {
+            memset(vrs, 0, sizeof vrs);
+            vrs[0] = 0;
+            memcpy(vrs + 1, ids[i], 5);
+            vrs[6] = 1;
+            if (blkdev_write(dev, 32768 + (uint64_t)i * 2048, vrs, 2048) != 0) {
+                kfree(sec); return -EIO;
+            }
+        }
+    }
+
+    uint32_t vds = UDF_FMT_VDS;
+
+    memset(sec, 0, bs);
+    wr32(sec + 16, 1);
+    wr32(sec + 20, 0);
+    udf_dstring(sec + 24, 32, label && *label ? label : "CERVUS");
+    wr16(sec + 56, 1);
+    wr16(sec + 58, 1);
+    wr16(sec + 60, 2);
+    wr16(sec + 62, 3);
+    wr32(sec + 64, 1);
+    wr32(sec + 68, 1);
+    {
+        char vsid[40];
+        snprintf(vsid, sizeof vsid, "%08x%s", (unsigned)(now ? now : 1),
+                 label && *label ? label : "CERVUS");
+        udf_dstring(sec + 72, 128, vsid);
+    }
+    udf_charspec(sec + 200);
+    udf_charspec(sec + 264);
+    udf_regid(sec + 344, "*Cervus UDF");
+    udf_ts_write(sec + 376, now);
+    udf_regid(sec + 388, "*Cervus UDF");
+    wr16(sec + 488, 1);
+    udf_mk_tag(sec, 1, dv, serial, 490, vds);
+    if (blkdev_write(dev, (uint64_t)vds * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    memset(sec, 0, bs);
+    wr32(sec + 16, 1);
+    wr16(sec + 20, 1);
+    wr16(sec + 22, 0);
+    udf_regid(sec + 24, "+NSR02");
+    wr32(sec + 64, bitmap_extent);
+    wr32(sec + 68, bitmap_block);
+    wr32(sec + 184, 4);
+    wr32(sec + 188, part_start);
+    wr32(sec + 192, part_len);
+    udf_regid(sec + 196, "*Cervus UDF");
+    udf_mk_tag(sec, TAG_PD, dv, serial, 490, vds + 1);
+    if (blkdev_write(dev, (uint64_t)(vds + 1) * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    memset(sec, 0, bs);
+    wr32(sec + 16, 2);
+    udf_charspec(sec + 20);
+    udf_dstring(sec + 84, 128, label && *label ? label : "CERVUS");
+    wr32(sec + 212, bs);
+    udf_regid(sec + 216, "*OSTA UDF Compliant");
+    wr16(sec + 216 + 24, 0x0102);
+    wr32(sec + 248, bs);
+    wr32(sec + 252, 0);
+    wr16(sec + 256, 0);
+    wr32(sec + 264, 6);
+    wr32(sec + 268, 1);
+    udf_regid(sec + 272, "*Cervus UDF");
+    wr32(sec + 432, bs);
+    wr32(sec + 436, UDF_FMT_LVID);
+    sec[440] = 1;
+    sec[441] = 6;
+    wr16(sec + 442, 1);
+    wr16(sec + 444, 0);
+    udf_mk_tag(sec, TAG_LVD, dv, serial, 446, vds + 2);
+    if (blkdev_write(dev, (uint64_t)(vds + 2) * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    memset(sec, 0, bs);
+    wr32(sec + 16, 3);
+    wr32(sec + 20, 0);
+    udf_mk_tag(sec, 7, dv, serial, 8, vds + 3);
+    if (blkdev_write(dev, (uint64_t)(vds + 3) * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    memset(sec, 0, bs);
+    wr32(sec + 16, 4);
+    udf_regid(sec + 20, "*UDF LV Info");
+    wr16(sec + 44, 0x0102);
+    sec[46] = 4;
+    sec[47] = 0;
+    udf_charspec(sec + 52);
+    udf_dstring(sec + 116, 128, label && *label ? label : "CERVUS");
+    udf_dstring(sec + 244, 36, "");
+    udf_dstring(sec + 280, 36, "");
+    udf_dstring(sec + 316, 36, "");
+    udf_regid(sec + 352, "*Cervus UDF");
+    udf_mk_tag(sec, 4, dv, serial, 496, vds + 4);
+    if (blkdev_write(dev, (uint64_t)(vds + 4) * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    memset(sec, 0, bs);
+    udf_mk_tag(sec, TAG_TD, dv, serial, 496, vds + 5);
+    if (blkdev_write(dev, (uint64_t)(vds + 5) * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    for (uint32_t i = 0; i < UDF_FMT_VDS_LEN; i++) {
+        memset(sec, 0, bs);
+        if (blkdev_read(dev, (uint64_t)(vds + i) * bs, sec, bs) != 0) break;
+        if (rd16(sec) == 0) { memset(sec, 0, bs); }
+        else {
+            uint16_t tid = rd16(sec);
+            uint16_t clen = rd16(sec + 10);
+            udf_mk_tag(sec, tid, dv, serial, clen, UDF_FMT_RVDS + i);
+        }
+        if (blkdev_write(dev, (uint64_t)(UDF_FMT_RVDS + i) * bs, sec, bs) != 0) {
+            kfree(sec); return -EIO;
+        }
+    }
+
+    memset(sec, 0, bs);
+    udf_ts_write(sec + 16, now);
+    wr32(sec + 28, 1);
+    wr32(sec + 32, 0);
+    wr32(sec + 36, 0);
+    wr64(sec + 40, 16);
+    wr32(sec + 72, 1);
+    wr32(sec + 76, 46);
+    wr32(sec + 80, part_len - used_blocks);
+    wr32(sec + 84, part_len);
+    udf_regid(sec + 88, "*Cervus UDF");
+    wr32(sec + 120, 0);
+    wr32(sec + 124, 1);
+    wr16(sec + 128, 0x0102);
+    wr16(sec + 130, 0x0102);
+    wr16(sec + 132, 0x0102);
+    udf_mk_tag(sec, TAG_LVID, dv, serial, 118, UDF_FMT_LVID);
+    if (blkdev_write(dev, (uint64_t)UDF_FMT_LVID * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    memset(sec, 0, bs);
+    udf_mk_tag(sec, TAG_TD, dv, serial, 496, UDF_FMT_LVID + 1);
+    if (blkdev_write(dev, (uint64_t)(UDF_FMT_LVID + 1) * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    {
+        uint64_t anchors[3] = { 256, total - 257, total - 1 };
+        for (int i = 0; i < 3; i++) {
+            if (anchors[i] < 256 || anchors[i] >= total) continue;
+            if (i > 0 && anchors[i] == anchors[i - 1]) continue;
+            memset(sec, 0, bs);
+            wr32(sec + 16, UDF_FMT_VDS_LEN * bs);
+            wr32(sec + 20, vds);
+            wr32(sec + 24, UDF_FMT_VDS_LEN * bs);
+            wr32(sec + 28, UDF_FMT_RVDS);
+            udf_mk_tag(sec, TAG_AVDP, dv, serial, 496, (uint32_t)anchors[i]);
+            if (blkdev_write(dev, anchors[i] * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+        }
+    }
+
+    memset(sec, 0, bs);
+    udf_ts_write(sec + 16, now);
+    wr16(sec + 28, 3);
+    wr16(sec + 30, 3);
+    wr32(sec + 32, 1);
+    wr32(sec + 36, 1);
+    wr32(sec + 40, 0);
+    wr32(sec + 44, 0);
+    udf_charspec(sec + 48);
+    udf_dstring(sec + 112, 128, label && *label ? label : "CERVUS");
+    udf_charspec(sec + 240);
+    udf_dstring(sec + 304, 32, label && *label ? label : "CERVUS");
+    wr32(sec + 400, bs);
+    wr32(sec + 404, root_block);
+    wr16(sec + 408, 0);
+    udf_regid(sec + 416, "*OSTA UDF Compliant");
+    wr16(sec + 416 + 24, 0x0102);
+    udf_mk_tag(sec, TAG_FSD, dv, serial, 496, 0);
+    if (blkdev_write(dev, (uint64_t)(part_start + 0) * bs, sec, bs) != 0) { kfree(sec); return -EIO; }
+
+    {
+        uint32_t nsec = bitmap_sectors;
+        uint8_t *bm = kzalloc(nsec * bs);
+        if (!bm) { kfree(sec); return -ENOMEM; }
+        wr32(bm + 16, bitmap_nbits);
+        wr32(bm + 20, bitmap_nbytes);
+        for (uint32_t i = 0; i < bitmap_nbits; i++)
+            bm[24 + i / 8] |= (uint8_t)(1u << (i % 8));
+        for (uint32_t i = 0; i < used_blocks && i < bitmap_nbits; i++)
+            bm[24 + i / 8] &= (uint8_t)~(1u << (i % 8));
+        udf_mk_tag(bm, TAG_SBD, dv, serial, (uint16_t)(8 + bitmap_nbytes > 2032 ? 2032 : 8 + bitmap_nbytes),
+                   bitmap_block);
+        for (uint32_t s2 = 0; s2 < nsec; s2++) {
+            if (blkdev_write(dev, (uint64_t)(part_start + bitmap_block + s2) * bs,
+                             bm + (size_t)s2 * bs, bs) != 0) {
+                kfree(bm); kfree(sec); return -EIO;
+            }
+        }
+        kfree(bm);
+    }
+
+    memset(sec, 0, bs);
+    wr16(sec + 16, 0);
+    wr16(sec + 18, 0);
+    sec[20] = 4;
+    sec[21] = 0;
+    wr16(sec + 22, 0);
+    wr16(sec + 24, 1);
+    sec[26] = 0;
+    sec[27] = 4;
+    wr32(sec + 36, 0);
+    wr32(sec + 40, 0);
+    wr32(sec + 44, 0x14A5);
+    wr16(sec + 48, 1);
+    sec[50] = 0;
+    sec[51] = 0;
+    wr32(sec + 52, 0);
+    wr64(sec + 56, 0);
+    wr64(sec + 64, 0);
+    udf_ts_write(sec + 72, now);
+    udf_ts_write(sec + 84, now);
+    udf_ts_write(sec + 96, now);
+    wr32(sec + 108, 1);
+    udf_regid(sec + 128, "*Cervus UDF");
+    wr64(sec + 160, 0);
+    wr32(sec + 168, 0);
+    wr32(sec + 172, 0);
+    udf_mk_tag(sec, TAG_FE, dv, serial, 176, root_block);
+    if (blkdev_write(dev, (uint64_t)(part_start + root_block) * bs, sec, bs) != 0) {
+        kfree(sec); return -EIO;
+    }
+
+    kfree(sec);
+    if (dev->ops && dev->ops->flush) dev->ops->flush(dev);
+    serial_printf("[udf] formatted %s: %u blocks of %u, partition at %u\n",
+                  dev->name, part_len, bs, part_start);
+    return 0;
+}
+
 int udf_detect(blkdev_t *dev) {
     if (!dev) return 0;
     for (uint32_t k = 0; k < 16; k++) {

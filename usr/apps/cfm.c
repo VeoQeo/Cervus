@@ -64,6 +64,25 @@ static int has_ext_ci(const char *name, const char *ext) {
     return 1;
 }
 
+static void u8_pad(char *dst, size_t cap, const char *src, int width) {
+    size_t o = 0;
+    int cols = 0;
+    const unsigned char *p = (const unsigned char *)src;
+    while (*p && cols < width) {
+        int len = 1;
+        if      ((*p & 0xE0) == 0xC0) len = 2;
+        else if ((*p & 0xF0) == 0xE0) len = 3;
+        else if ((*p & 0xF8) == 0xF0) len = 4;
+        for (int i = 0; i < len && p[i]; i++) {
+            if (o + 1 < cap) dst[o++] = (char)p[i];
+        }
+        p += len;
+        cols++;
+    }
+    while (cols < width && o + 1 < cap) { dst[o++] = ' '; cols++; }
+    dst[o] = 0;
+}
+
 static void fmt_mtime(int64_t t, char *out, size_t cap) {
     if (t <= 0) { snprintf(out, cap, "%-12s", "-"); return; }
     time_t tv = (time_t)t;
@@ -258,16 +277,20 @@ static void draw(void) {
             fmt_mtime(e->mtime, when, sizeof when);
             int datew = (leftw >= 48) ? 15 : 0;
             int namew = leftw - 11 - datew; if (namew < 4) namew = 4;
-            char row[600];
+            char nm[600];
+            u8_pad(nm, sizeof nm, e->name, namew);
+            char row[900];
             if (datew)
-                snprintf(row, sizeof(row), " %c %-*.*s %6s  %-12s ",
-                         e->is_dir ? '/' : ' ', namew, namew, e->name, sz, when);
+                snprintf(row, sizeof(row), " %c %s %6s  %-12s ",
+                         e->is_dir ? '/' : ' ', nm, sz, when);
             else
-                snprintf(row, sizeof(row), " %c %-*.*s %6s",
-                         e->is_dir ? '/' : ' ', namew, namew, e->name, sz);
-            if (selrow)         printf("\x1b[7m%-*.*s\x1b[0m", leftw, leftw, row);
-            else if (e->is_dir) printf("\x1b[94m%-*.*s\x1b[0m", leftw, leftw, row);
-            else                printf("%-*.*s", leftw, leftw, row);
+                snprintf(row, sizeof(row), " %c %s %6s",
+                         e->is_dir ? '/' : ' ', nm, sz);
+            char pad[900];
+            u8_pad(pad, sizeof pad, row, leftw);
+            if (selrow)         printf("\x1b[7m%s\x1b[0m", pad);
+            else if (e->is_dir) printf("\x1b[94m%s\x1b[0m", pad);
+            else                printf("%s", pad);
         } else {
             printf("%*s", leftw, "");
         }

@@ -1332,6 +1332,7 @@ int ext2_format(blkdev_t *dev, const char *label, int ext4) {
             last_pct_ext2 = pct;
             fmt_progress_set((int)pct);
         }
+        fmt_progress_yield();
     }
     sb.s_free_blocks_count = total_blocks - used_total;
     sb.s_free_inodes_count = total_inodes - 10;

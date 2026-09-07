@@ -120,7 +120,38 @@ build_data_iso() {
     rm -rf "$root"; mkdir -p "$root/docs"
     printf 'Hello from a CD-ROM!\n' > "$root/hello.txt"
     printf 'Nested dir file.\n'     > "$root/docs/hello.txt"
-    printf 'Cervus sample data CD\nmount /dev/sdb /mnt/cdrom\n' > "$root/readme.txt"
+    cat > "$root/readme.txt" <<'RDM'
+Cervus sample data CD
+=====================
+
+A small ISO 9660 disc for exercising the CD path: mounting, reading
+files out of a directory, and the timestamps the filesystem records.
+
+Mounting it
+-----------
+
+  mount /dev/sdb /mnt/cdrom
+  ls -l /mnt/cdrom
+  cat /mnt/cdrom/hello.txt
+  umount /mnt/cdrom
+
+The device name depends on where QEMU attached the drive; run lsblk if
+/dev/sdb is not there.
+
+What to look for
+----------------
+
+ls -l shows the recording time ISO 9660 keeps in each directory
+record, so these files carry the date the image was built rather than
+a blank column.
+
+Contents
+--------
+
+  hello.txt        a file in the root directory
+  docs/hello.txt   the same, one level down
+  readme.txt       this file
+RDM
     green "Building cervus_data.iso..."
     xorriso -as mkisofs -r -J -V CERVUS_DATA -o cervus_data.iso "$root" >/dev/null 2>&1
     rm -rf "$root"

@@ -11,6 +11,7 @@ int disk_format(const char *devname, const char *label, int ext4);
 
 void fmt_progress_begin(void);
 void fmt_progress_set(int pct);
+void fmt_progress_yield(void);
 void fmt_progress_end(void);
 int  fmt_progress_get(void);
 

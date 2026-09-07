@@ -180,13 +180,18 @@ static void show(void) {
     printf("available:\n");
     for (int i = 0; i < NTHEMES; i++) {
         const theme_t *t = &THEMES[i].t;
-        printf("  %-9s %-32s ", THEMES[i].name, THEMES[i].about);
-        for (int c = 1; c < 7; c++) {
+        printf("  %-11s %-31s ", THEMES[i].name, THEMES[i].about);
+        for (int c = 1; c < 8; c++) {
             uint32_t v = t->palette[c];
             printf("\x1b[48;2;%u;%u;%um  \x1b[0m",
                    (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
         }
-        printf("  \x1b[48;2;%u;%u;%um\x1b[38;2;%u;%u;%um Aa \x1b[0m",
+        for (int c = 9; c < 15; c++) {
+            uint32_t v = t->palette[c];
+            printf("\x1b[48;2;%u;%u;%um  \x1b[0m",
+                   (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
+        }
+        printf(" \x1b[48;2;%u;%u;%um\x1b[38;2;%u;%u;%um Aa \x1b[0m",
                (t->bg >> 16) & 0xFF, (t->bg >> 8) & 0xFF, t->bg & 0xFF,
                (t->fg >> 16) & 0xFF, (t->fg >> 8) & 0xFF, t->fg & 0xFF);
         printf("\n");

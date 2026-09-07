@@ -6,7 +6,16 @@ SYNOPSIS
 
 DESCRIPTION
        Formats DEVICE. Without -t the type is chosen from the partition
-       entry. Supported types are ext2, ext4 and fat32.
+       entry. It asks for confirmation first, since everything on the
+       device is lost.
+
+TYPES
+       ext2    the default; simple and well exercised here
+       ext4    extents, readable by Linux as a modern ext4 volume
+       fat32   what an EFI system partition needs
+       udf     read and written by Cervus, and readable by the udftools
+               on Linux; the Linux kernel driver does not yet accept a
+               volume made here
 
 OPTIONS
        -t T   filesystem type to create
@@ -14,6 +23,7 @@ OPTIONS
 EXAMPLES
        mkfs -t ext4 /dev/sda2 root
        mkfs -t fat32 /dev/sda1 BOOT
+       mkfs -t udf /dev/sdb1 DATA
 
 SEE ALSO
-       mkpart(1), mount(1), wipefs(1)
+       mkpart(1), mount(1), wipefs(1), fdisk(1)
