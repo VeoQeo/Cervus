@@ -38,6 +38,11 @@ void fb_init_backbuffer(fb_info_t *fb) {
     }
 }
 
+void fb_resize_backbuffer(fb_info_t *fb) {
+    if (g_backbuf) { free(g_backbuf); g_backbuf = NULL; }
+    fb_init_backbuffer(fb);
+}
+
 void fb_set_backbuffer(uint32_t *buf) {
     if (buf) g_backbuf = buf;
 }

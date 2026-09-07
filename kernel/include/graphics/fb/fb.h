@@ -70,6 +70,7 @@ int      fb_set_font(uint16_t w, uint16_t h, uint32_t nglyph,
                      const uint8_t *glyphs8, const uint16_t *cp2glyph);
 void     fb_font_reset(void);
 void fb_init_backbuffer(fb_info_t *fb);
+void fb_resize_backbuffer(fb_info_t *fb);
 void fb_flush(fb_info_t *fb);
 void fb_flush_lines(fb_info_t *fb, uint32_t y_start, uint32_t y_end);
 

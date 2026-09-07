@@ -158,6 +158,7 @@
 #define SYS_DISK_FORMAT_PROGRESS 604
 #define SYS_AUDIO_MIXER       605
 #define SYS_CONSOLE_THEME     606
+#define SYS_FB_SETMODE        607
 
 #define SYSCALL_TABLE_SIZE    640
 

@@ -44,6 +44,7 @@
 #include "../include/drivers/net/e1000.h"
 #include "../include/drivers/net/atl1c.h"
 #include "../include/drivers/net/atl1e.h"
+#include "../include/drivers/video/bga.h"
 #include "../include/drivers/net/rtl8139.h"
 #include "../include/drivers/net/rtl8169.h"
 #include "../include/drivers/net/virtio_net.h"
@@ -268,6 +269,7 @@ void kmain(void) {
     apic_init();
     serial_writestring("APIC [OK]\n");
     serial_writestring("[stage] pci_init\n");
+    bga_init();
     pci_init();
     serial_writestring("PCI [OK]\n");
     serial_writestring("[stage] smp_init\n");
