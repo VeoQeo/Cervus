@@ -367,6 +367,8 @@ uint32_t console_theme_remap(uint32_t colour, const uint32_t old_pal[16],
     return colour;
 }
 
+static void alt_remap(const uint32_t old_pal[16], uint32_t old_fg, uint32_t old_bg);
+
 void console_set_theme(const uint32_t pal[16], uint32_t fg, uint32_t bg) {
     uint32_t old_pal[16], old_fg = theme_fg, old_bg = theme_bg;
     for (int i = 0; i < 16; i++) old_pal[i] = theme_pal[i];
@@ -377,6 +379,17 @@ void console_set_theme(const uint32_t pal[16], uint32_t fg, uint32_t bg) {
 
     text_color = console_theme_remap(text_color, old_pal, old_fg, old_bg);
     bg_color   = console_theme_remap(bg_color,   old_pal, old_fg, old_bg);
+    alt_remap(old_pal, old_fg, old_bg);
+}
+
+static void alt_remap(const uint32_t old_pal[16], uint32_t old_fg, uint32_t old_bg) {
+    if (!alt_active || alt_saved_n == 0) return;
+    for (size_t i = 0; i < alt_saved_n; i++) {
+        alt_save[i].fg = console_theme_remap(alt_save[i].fg, old_pal, old_fg, old_bg);
+        alt_save[i].bg = console_theme_remap(alt_save[i].bg, old_pal, old_fg, old_bg);
+    }
+    alt_fg = console_theme_remap(alt_fg, old_pal, old_fg, old_bg);
+    alt_bg = console_theme_remap(alt_bg, old_pal, old_fg, old_bg);
 }
 
 #define ESC_MAX_PARAMS 8
