@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <cervus_util.h>
 
 static const char *type_str(uint32_t t)
@@ -40,6 +41,17 @@ static const char *type_short(uint32_t t)
         case 5: return "pipe";
         default: return "unknown";
     }
+}
+
+static void fmt_stamp(int64_t t, char *out, size_t cap)
+{
+    if (t <= 0) { snprintf(out, cap, "-"); return; }
+    time_t tv = (time_t)t;
+    struct tm *tm = localtime(&tv);
+    if (!tm) { snprintf(out, cap, "-"); return; }
+    snprintf(out, cap, "%04d-%02d-%02d %02d:%02d:%02d",
+             tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+             tm->tm_hour, tm->tm_min, tm->tm_sec);
 }
 
 static const char USAGE[] =
@@ -90,6 +102,10 @@ int main(int argc, char **argv)
             printf("  Blocks: %lu\n", (unsigned long)st.st_blocks);
             printf("  UID:    %u\n", (unsigned)st.st_uid);
             printf("  GID:    %u\n", (unsigned)st.st_gid);
+            char ts[40];
+            fmt_stamp(st.st_atime, ts, sizeof ts); printf("  Access: %s\n", ts);
+            fmt_stamp(st.st_mtime, ts, sizeof ts); printf("  Modify: %s\n", ts);
+            fmt_stamp(st.st_ctime, ts, sizeof ts); printf("  Change: %s\n", ts);
             if (i + 1 < argc) putchar('\n');
         }
     }

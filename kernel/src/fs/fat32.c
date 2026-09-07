@@ -187,6 +187,54 @@ static void lfn_append(char *out, int *out_len, int out_cap, const uint8_t *src,
 static vnode_t *fat32_alloc_vnode(fat32_t *fs, uint32_t first_cluster,
                                   uint32_t size, uint8_t attr,
                                   uint32_t dir_cluster, uint32_t dir_entry_off);
+
+static int64_t fat32_dos_to_unix(uint16_t date, uint16_t time) {
+    if (date == 0) return 0;
+    int day  = date & 0x1F;
+    int mon  = (date >> 5) & 0x0F;
+    int year = 1980 + ((date >> 9) & 0x7F);
+    int sec  = (time & 0x1F) * 2;
+    int min  = (time >> 5) & 0x3F;
+    int hour = (time >> 11) & 0x1F;
+    if (mon < 1 || mon > 12 || day < 1 || day > 31) return 0;
+
+    static const int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    int64_t days = 0;
+    for (int y = 1970; y < year; y++)
+        days += (((y % 4 == 0 && y % 100 != 0) || y % 400 == 0)) ? 366 : 365;
+    for (int m = 1; m < mon; m++) {
+        days += mdays[m - 1];
+        if (m == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) days++;
+    }
+    days += day - 1;
+    return days * 86400LL + hour * 3600LL + min * 60LL + sec;
+}
+
+static void fat32_unix_to_dos(int64_t t, uint16_t *date, uint16_t *time) {
+    *date = 0; *time = 0;
+    if (t <= 0) return;
+    int64_t days = t / 86400;
+    int64_t rem  = t % 86400;
+    int year = 1970;
+    for (;;) {
+        int len = (((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) ? 366 : 365;
+        if (days < len) break;
+        days -= len;
+        year++;
+    }
+    if (year < 1980) return;
+    static const int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    int mon = 1;
+    for (; mon <= 12; mon++) {
+        int len = mdays[mon - 1];
+        if (mon == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) len++;
+        if (days < len) break;
+        days -= len;
+    }
+    *date = (uint16_t)(((year - 1980) << 9) | (mon << 5) | (int)(days + 1));
+    *time = (uint16_t)(((int)(rem / 3600) << 11) | ((int)((rem % 3600) / 60) << 5) |
+                       (int)((rem % 60) / 2));
+}
 static const vnode_ops_t fat32_file_ops;
 static const vnode_ops_t fat32_dir_ops;
 
@@ -265,6 +313,10 @@ static int lookup_cb(fat32_t *fs, uint32_t cluster, uint32_t entry_off,
         vnode_t *vn = fat32_alloc_vnode(fs, first, e->file_size, e->attr,
                                         cluster, entry_off);
         if (!vn) return -ENOMEM;
+        vn->mtime = fat32_dos_to_unix(e->modify_date, e->modify_time);
+        vn->ctime = fat32_dos_to_unix(e->create_date, e->create_time);
+        vn->atime = fat32_dos_to_unix(e->access_date, 0);
+        if (vn->atime == 0) vn->atime = vn->mtime;
         *ctx->out = vn;
         ctx->found = 1;
         return 1;
@@ -446,6 +498,10 @@ static int fat32_file_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_type = node->type;
     out->st_mode = 0644;
     out->st_size = vd ? vd->file_size : 0;
+    out->st_blocks = (out->st_size + 511) / 512;
+    out->st_atime = node->atime;
+    out->st_mtime = node->mtime;
+    out->st_ctime = node->ctime;
     return 0;
 }
 
@@ -463,6 +519,20 @@ static void fat32_common_unref(vnode_t *n) {
                     ent.cluster_lo = (uint16_t)(vd->first_cluster & 0xFFFF);
                     ent.cluster_hi = (uint16_t)((vd->first_cluster >> 16) & 0xFFFF);
                     ent.attr       = vd->attr ? vd->attr : FAT_ATTR_ARCHIVE;
+                    {
+                        int64_t now = clock_realtime_sec();
+                        if (now > 0) {
+                            uint16_t d, t;
+                            fat32_unix_to_dos(now, &d, &t);
+                            ent.modify_date = d;
+                            ent.modify_time = t;
+                            ent.access_date = d;
+                            if (ent.create_date == 0) {
+                                ent.create_date = d;
+                                ent.create_time = t;
+                            }
+                        }
+                    }
                     memcpy(tmp + vd->dir_entry_offset, &ent, sizeof(ent));
                     write_cluster(vd->fs, vd->dir_cluster, tmp);
                 }
@@ -868,6 +938,9 @@ static int fat32_dir_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_type = VFS_NODE_DIR;
     out->st_mode = 0755;
     out->st_size = 0;
+    out->st_atime = node->atime;
+    out->st_mtime = node->mtime;
+    out->st_ctime = node->ctime;
     return 0;
 }
 

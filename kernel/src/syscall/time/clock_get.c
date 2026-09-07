@@ -89,6 +89,14 @@ static void _ensure_rtc_base(void)
     }
 }
 
+int64_t clock_realtime_sec(void)
+{
+    _ensure_rtc_base();
+    if (!g_rtc_initialized) return 0;
+    uint64_t delta = sched_now_ns() - g_rtc_base_ns;
+    return g_rtc_base_sec + (int64_t)(delta / 1000000000ULL);
+}
+
 int64_t sys_clock_get(uint64_t id, uint64_t ts_ptr)
 {
     (void)id;

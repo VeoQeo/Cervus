@@ -45,6 +45,9 @@ typedef struct {
     uint32_t        st_gid;
     uint64_t        st_size;
     uint64_t        st_blocks;
+    int64_t         st_atime;
+    int64_t         st_mtime;
+    int64_t         st_ctime;
 } vfs_stat_t;
 
 typedef struct {
@@ -52,6 +55,8 @@ typedef struct {
     uint8_t     d_type;
     char        d_name[VFS_MAX_NAME];
 } vfs_dirent_t;
+
+int64_t clock_realtime_sec(void);
 
 typedef struct vnode     vnode_t;
 typedef struct vfs_mount vfs_mount_t;
@@ -84,6 +89,9 @@ struct vnode {
     uint32_t            gid;
     uint64_t            size;
     uint64_t            ino;
+    int64_t             atime;
+    int64_t             mtime;
+    int64_t             ctime;
     const vnode_ops_t  *ops;
     void               *fs_data;
     volatile int        refcount;

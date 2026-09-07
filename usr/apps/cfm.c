@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <poll.h>
@@ -18,9 +19,10 @@
 #define MAX_ENTRIES 4096
 
 typedef struct {
-    char name[256];
-    int  is_dir;
-    long size;
+    char    name[256];
+    int     is_dir;
+    long    size;
+    int64_t mtime;
 } entry_t;
 
 static char     g_cwd[PMAX];
@@ -60,6 +62,18 @@ static int has_ext_ci(const char *name, const char *ext) {
         if (a != ext[i]) return 0;
     }
     return 1;
+}
+
+static void fmt_mtime(int64_t t, char *out, size_t cap) {
+    if (t <= 0) { snprintf(out, cap, "%-12s", "-"); return; }
+    time_t tv = (time_t)t;
+    struct tm *tm = localtime(&tv);
+    if (!tm) { snprintf(out, cap, "%-12s", "-"); return; }
+    static const char *const mon[12] = { "Jan","Feb","Mar","Apr","May","Jun",
+                                         "Jul","Aug","Sep","Oct","Nov","Dec" };
+    int m = tm->tm_mon; if (m < 0 || m > 11) m = 0;
+    snprintf(out, cap, "%3s %2d %02d:%02d", mon[m], tm->tm_mday,
+             tm->tm_hour, tm->tm_min);
 }
 
 static int is_image(const char *name) {
@@ -112,6 +126,7 @@ static void load_dir(void) {
         strcpy(g_ent[g_n].name, "..");
         g_ent[g_n].is_dir = 1;
         g_ent[g_n].size = 0;
+        g_ent[g_n].mtime = 0;
         g_n++;
     }
     DIR *d = opendir(g_cwd);
@@ -130,9 +145,11 @@ static void load_dir(void) {
             if (stat(full, &st) == 0) {
                 t->is_dir = S_ISDIR(st.st_mode) ? 1 : 0;
                 t->size   = (long)st.st_size;
+                t->mtime  = st.st_mtime;
             } else {
                 t->is_dir = 0;
                 t->size   = 0;
+                t->mtime  = 0;
             }
             g_n++;
         }
@@ -237,10 +254,17 @@ static void draw(void) {
             char sz[24];
             if (e->is_dir) strcpy(sz, "<DIR>");
             else           fmt_size(e->size, sz, sizeof(sz));
-            int namew = leftw - 11; if (namew < 4) namew = 4;
+            char when[20];
+            fmt_mtime(e->mtime, when, sizeof when);
+            int datew = (leftw >= 48) ? 15 : 0;
+            int namew = leftw - 11 - datew; if (namew < 4) namew = 4;
             char row[600];
-            snprintf(row, sizeof(row), " %c %-*.*s %6s",
-                     e->is_dir ? '/' : ' ', namew, namew, e->name, sz);
+            if (datew)
+                snprintf(row, sizeof(row), " %c %-*.*s %6s  %-12s ",
+                         e->is_dir ? '/' : ' ', namew, namew, e->name, sz, when);
+            else
+                snprintf(row, sizeof(row), " %c %-*.*s %6s",
+                         e->is_dir ? '/' : ' ', namew, namew, e->name, sz);
             if (selrow)         printf("\x1b[7m%-*.*s\x1b[0m", leftw, leftw, row);
             else if (e->is_dir) printf("\x1b[94m%-*.*s\x1b[0m", leftw, leftw, row);
             else                printf("%-*.*s", leftw, leftw, row);

@@ -68,6 +68,10 @@ static const vnode_ops_t ramfs_dir_ops;
 
 static vnode_t *ramfs_alloc_vnode(vnode_type_t type, uint32_t mode) {
     vnode_t *v = kzalloc(sizeof(vnode_t));
+    if (v) {
+        int64_t now = clock_realtime_sec();
+        v->atime = v->mtime = v->ctime = now;
+    }
     if (!v) return NULL;
 
     ramfs_node_t *rn = kzalloc(sizeof(ramfs_node_t));
@@ -155,6 +159,10 @@ static int64_t ramfs_file_write(vnode_t *node, const void *buf,
         pos  += n;
     }
     if (end > node->size) node->size = end;
+    {
+        int64_t now = clock_realtime_sec();
+        if (now > 0) { node->mtime = now; node->ctime = now; }
+    }
     return (int64_t)len;
 }
 
@@ -183,6 +191,9 @@ static int ramfs_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_gid    = node->gid;
     out->st_size   = node->size;
     out->st_blocks = (node->size + 511) / 512;
+    out->st_atime  = node->atime;
+    out->st_mtime  = node->mtime;
+    out->st_ctime  = node->ctime;
     return 0;
 }
 

@@ -443,9 +443,25 @@ static vnode_t *ext2_make_vnode(ext2_t *fs, uint32_t ino, ext2_inode_t *di) {
     v->gid      = di->i_gid;
     v->ino      = ino;
     v->size     = di->i_size;
+    v->atime    = (int64_t)di->i_atime;
+    v->mtime    = (int64_t)di->i_mtime;
+    v->ctime    = (int64_t)di->i_ctime;
     v->fs_data  = vd;
     v->refcount = 1;
     return v;
+}
+
+static void ext2_touch(vnode_t *node, ext2_inode_t *di, int modified) {
+    int64_t now = clock_realtime_sec();
+    if (now <= 0) return;
+    node->atime = now;
+    di->i_atime = (uint32_t)now;
+    if (modified) {
+        node->mtime = now;
+        node->ctime = now;
+        di->i_mtime = (uint32_t)now;
+        di->i_ctime = (uint32_t)now;
+    }
 }
 
 static int64_t ext2_file_read(vnode_t *node, void *buf, size_t len, uint64_t offset) {
@@ -518,6 +534,7 @@ static int64_t ext2_file_write_impl(vnode_t *node, const void *buf, size_t len, 
     }
     uint32_t ne = (uint32_t)(offset + done);
     if (ne > di.i_size) { di.i_size = ne; node->size = ne; }
+    ext2_touch(node, &di, 1);
     inode_write(fs, vd->ino, &di);
     fs->dirty = true;
     kfree(bb);
@@ -694,6 +711,9 @@ static int ext2_stat(vnode_t *node, vfs_stat_t *out) {
     out->st_gid  = node->gid;
     out->st_size = node->size;
     out->st_blocks = (node->size + 511) / 512;
+    out->st_atime = node->atime;
+    out->st_mtime = node->mtime;
+    out->st_ctime = node->ctime;
     return 0;
 }
 
@@ -930,6 +950,14 @@ static int ext2_dir_mkdir_impl(vnode_t *dir, const char *name, uint32_t mode) {
     if (ino < 0) return (int)ino;
     ext2_inode_t ndi;
     memset(&ndi, 0, sizeof(ndi));
+    {
+        int64_t now = clock_realtime_sec();
+        if (now > 0) {
+            ndi.i_atime = (uint32_t)now;
+            ndi.i_mtime = (uint32_t)now;
+            ndi.i_ctime = (uint32_t)now;
+        }
+    }
     ndi.i_mode = EXT2_S_IFDIR | (uint16_t)(mode ? mode : 0755);
     ndi.i_uid  = (uint16_t)vfs_current_uid();
     ndi.i_gid  = (uint16_t)vfs_current_uid();
@@ -975,6 +1003,14 @@ static int ext2_dir_create_impl(vnode_t *dir, const char *name, uint32_t mode, v
     if (ino < 0) return (int)ino;
     ext2_inode_t ndi;
     memset(&ndi, 0, sizeof(ndi));
+    {
+        int64_t now = clock_realtime_sec();
+        if (now > 0) {
+            ndi.i_atime = (uint32_t)now;
+            ndi.i_mtime = (uint32_t)now;
+            ndi.i_ctime = (uint32_t)now;
+        }
+    }
     ndi.i_mode = EXT2_S_IFREG | (uint16_t)(mode ? mode : 0644);
     ndi.i_uid  = (uint16_t)vfs_current_uid();
     ndi.i_gid  = (uint16_t)vfs_current_uid();

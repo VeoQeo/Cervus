@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
@@ -59,6 +60,25 @@ static void color_for(const Entry *e)
     else if (e->has_stat && (e->st.st_mode & S_IXUSR)) fputs(C_GREEN, stdout);
 }
 
+static void fmt_time(int64_t t, char *out, size_t cap)
+{
+    if (t <= 0) { snprintf(out, cap, "%12s", "-"); return; }
+    time_t tv = (time_t)t;
+    struct tm *tm = localtime(&tv);
+    if (!tm) { snprintf(out, cap, "%12s", "-"); return; }
+
+    static const char *const mon[12] = { "Jan","Feb","Mar","Apr","May","Jun",
+                                         "Jul","Aug","Sep","Oct","Nov","Dec" };
+    time_t now = time(NULL);
+    int m = tm->tm_mon;
+    if (m < 0 || m > 11) m = 0;
+    if (now > 0 && (now - tv) > 15552000)
+        snprintf(out, cap, "%3s %2d  %4d", mon[m], tm->tm_mday, tm->tm_year + 1900);
+    else
+        snprintf(out, cap, "%3s %2d %02d:%02d", mon[m], tm->tm_mday,
+                 tm->tm_hour, tm->tm_min);
+}
+
 static void emit_entry(const Entry *e, const ls_opts_t *o)
 {
     if (o->l) {
@@ -75,6 +95,11 @@ static void emit_entry(const Entry *e, const ls_opts_t *o)
             snprintf(sbuf, sizeof(sbuf), "%7s", "-");
         }
         fputs(C_CYAN, stdout); fputs(sbuf, stdout); fputs(C_RESET "  ", stdout);
+
+        char tbuf[24];
+        if (e->has_stat) fmt_time(e->st.st_mtime, tbuf, sizeof tbuf);
+        else             snprintf(tbuf, sizeof tbuf, "%12s", "-");
+        fputs(C_GRAY, stdout); fputs(tbuf, stdout); fputs(C_RESET "  ", stdout);
     }
     color_for(e);
     fputs(e->name, stdout);
