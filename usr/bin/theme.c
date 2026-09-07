@@ -4,8 +4,13 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <sys/syscall.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <curses.h>
 
 #define THEME_CONF "/etc/console.conf"
+#define THEME_DIR  "/etc/themes"
+#define MAX_CUSTOM 32
 
 typedef struct {
     uint32_t palette[16];
@@ -96,7 +101,70 @@ static const named_theme_t THEMES[] = {
     0xCFCFCF, 0x141414 }},
 };
 
-#define NTHEMES ((int)(sizeof THEMES / sizeof THEMES[0]))
+#define NBUILTIN ((int)(sizeof THEMES / sizeof THEMES[0]))
+
+static named_theme_t g_custom[MAX_CUSTOM];
+static char          g_custom_name[MAX_CUSTOM][32];
+static char          g_custom_about[MAX_CUSTOM][64];
+static int           g_ncustom;
+
+static int parse_hex(const char *s, uint32_t *out);
+
+static void load_custom(void) {
+    g_ncustom = 0;
+    DIR *d = opendir(THEME_DIR);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL && g_ncustom < MAX_CUSTOM) {
+        size_t n = strlen(e->d_name);
+        if (n < 7 || strcmp(e->d_name + n - 6, ".theme")) continue;
+
+        char path[256];
+        snprintf(path, sizeof path, "%s/%s", THEME_DIR, e->d_name);
+        FILE *f = fopen(path, "r");
+        if (!f) continue;
+
+        named_theme_t nt;
+        memset(&nt, 0, sizeof nt);
+        char *nm = g_custom_name[g_ncustom];
+        char *ab = g_custom_about[g_ncustom];
+        snprintf(nm, 32, "%.*s", (int)(n - 6), e->d_name);
+        snprintf(ab, 64, "%s", "custom");
+
+        char line[512];
+        while (fgets(line, sizeof line, f)) {
+            char *nl = strchr(line, '\n'); if (nl) *nl = 0;
+            char *eq = strchr(line, '='); if (!eq) continue;
+            *eq = 0;
+            const char *v = eq + 1;
+            if (!strcmp(line, "about")) snprintf(ab, 64, "%s", v);
+            else if (!strcmp(line, "fg")) parse_hex(v, &nt.t.fg);
+            else if (!strcmp(line, "bg")) parse_hex(v, &nt.t.bg);
+            else if (!strcmp(line, "palette")) {
+                const char *p = v;
+                for (int i = 0; i < 16 && p && *p; i++) {
+                    char tok[16]; int k = 0;
+                    while (*p && *p != ',' && k < 15) tok[k++] = *p++;
+                    tok[k] = 0;
+                    parse_hex(tok, &nt.t.palette[i]);
+                    if (*p == ',') p++;
+                }
+            }
+        }
+        fclose(f);
+        nt.name  = nm;
+        nt.about = ab;
+        g_custom[g_ncustom++] = nt;
+    }
+    closedir(d);
+}
+
+static int total_themes(void) { return NBUILTIN + g_ncustom; }
+
+static const named_theme_t *theme_at(int i) {
+    if (i < NBUILTIN) return &THEMES[i];
+    return &g_custom[i - NBUILTIN];
+}
 
 static const char USAGE[] =
     "Usage: theme                 show the current theme and the rest\n"
@@ -128,9 +196,21 @@ static int parse_hex(const char *s, uint32_t *out) {
 }
 
 static const named_theme_t *find_theme(const char *name) {
-    for (int i = 0; i < NTHEMES; i++)
-        if (!strcmp(THEMES[i].name, name)) return &THEMES[i];
+    for (int i = 0; i < total_themes(); i++)
+        if (!strcmp(theme_at(i)->name, name)) return theme_at(i);
     return NULL;
+}
+
+int theme_apply_live(const theme_t *t) {
+    return (int)syscall1(SYS_CONSOLE_THEME, t);
+}
+
+int theme_lookup(const char *name, theme_t *out) {
+    load_custom();
+    const named_theme_t *nt = find_theme(name);
+    if (!nt) return -1;
+    *out = nt->t;
+    return 0;
 }
 
 static int apply(const theme_t *t) {
@@ -178,9 +258,9 @@ static void show(void) {
     printf("current: \x1b[1m%s\x1b[0m   text #%06X on #%06X\n\n",
            g_cur_name, g_cur.fg, g_cur.bg);
     printf("available:\n");
-    for (int i = 0; i < NTHEMES; i++) {
-        const theme_t *t = &THEMES[i].t;
-        printf("  %-11s %-31s ", THEMES[i].name, THEMES[i].about);
+    for (int i = 0; i < total_themes(); i++) {
+        const theme_t *t = &theme_at(i)->t;
+        printf("  %-11s %-31s ", theme_at(i)->name, theme_at(i)->about);
         for (int c = 1; c < 8; c++) {
             uint32_t v = t->palette[c];
             printf("\x1b[48;2;%u;%u;%um  \x1b[0m",
@@ -194,13 +274,20 @@ static void show(void) {
         printf(" \x1b[48;2;%u;%u;%um\x1b[38;2;%u;%u;%um Aa \x1b[0m",
                (t->bg >> 16) & 0xFF, (t->bg >> 8) & 0xFF, t->bg & 0xFF,
                (t->fg >> 16) & 0xFF, (t->fg >> 8) & 0xFF, t->fg & 0xFF);
+        if (i >= NBUILTIN) printf(" \x1b[90mcustom\x1b[0m");
         printf("\n");
     }
-    printf("\nrun 'theme <name>' to switch\n");
+    printf("\nrun 'theme <name>' to switch, 'theme edit <name>' to make one\n");
 }
 
+int theme_editor(const char *name);
+
 int main(int argc, char **argv) {
+    load_custom();
     load_conf();
+
+    if (argc >= 2 && !strcmp(argv[1], "edit"))
+        return theme_editor(argc >= 3 ? argv[2] : NULL);
 
     if (argc < 2) { show(); return 0; }
     if (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help")) { fputs(USAGE, stdout); return 0; }
@@ -239,5 +326,237 @@ int main(int argc, char **argv) {
     snprintf(g_cur_name, sizeof g_cur_name, "%s", nt->name);
     if (apply(&g_cur) != 0) return 1;
     if (argc < 3 || strcmp(argv[2], "--once") != 0) save_conf();
+    return 0;
+}
+
+static const char *SLOT_NAME[18] = {
+    "black",   "red",     "green",   "yellow",
+    "blue",    "magenta", "cyan",    "white",
+    "br black","br red",  "br green","br yellow",
+    "br blue", "br mag",  "br cyan", "br white",
+    "text",    "background",
+};
+
+static uint32_t *slot_ptr(theme_t *t, int i) {
+    if (i < 16) return &t->palette[i];
+    if (i == 16) return &t->fg;
+    return &t->bg;
+}
+
+static int mkdir_p_theme(void) {
+    struct stat st;
+    if (stat(THEME_DIR, &st) == 0) return 0;
+    return mkdir(THEME_DIR, 0755);
+}
+
+static int save_theme(const char *name, const theme_t *t, const char *about) {
+    if (mkdir_p_theme() != 0) return -1;
+    char path[256];
+    snprintf(path, sizeof path, "%s/%s.theme", THEME_DIR, name);
+    FILE *f = fopen(path, "w");
+    if (!f) return -1;
+    fprintf(f, "about=%s\n", about && *about ? about : "custom");
+    fprintf(f, "palette=");
+    for (int i = 0; i < 16; i++)
+        fprintf(f, "%06X%s", t->palette[i], i == 15 ? "\n" : ",");
+    fprintf(f, "fg=%06X\n", t->fg);
+    fprintf(f, "bg=%06X\n", t->bg);
+    fclose(f);
+    return 0;
+}
+
+static void draw_slot_swatch(int y, int x, int slot, int width) {
+    attr_t a;
+    if (slot < 16) {
+        a = COLOR_PAIR(1 + (slot & 7));
+        if (slot >= 8) a |= A_BOLD;
+    } else if (slot == 16) {
+        a = A_NORMAL;
+    } else {
+        a = A_REVERSE;
+    }
+    attron(a);
+    move(y, x);
+    for (int i = 0; i < width; i++) addch('#');
+    attroff(a);
+}
+
+static int prompt_line(const char *label, char *buf, int cap) {
+    int y = 1;
+    int n = 0;
+    buf[0] = 0;
+
+    for (;;) {
+        move(y, 0);
+        clrtoeol();
+        attron(A_REVERSE);
+        mvprintw(y, 0, " %s ", label);
+        attroff(A_REVERSE);
+        printw(" %s_", buf);
+        refresh();
+
+        int ch = getch();
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) break;
+        if (ch == 27) {
+            move(y, 0);
+            clrtoeol();
+            refresh();
+            return -1;
+        }
+        if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+            if (n > 0) buf[--n] = 0;
+            continue;
+        }
+        if (ch == ERR || ch == KEY_RESIZE) continue;
+        if (ch >= 32 && ch < 127 && n < cap - 1) {
+            buf[n++] = (char)ch;
+            buf[n] = 0;
+        }
+    }
+
+    move(y, 0);
+    clrtoeol();
+    refresh();
+    return n;
+}
+
+int theme_editor(const char *name) {
+    theme_t t;
+    char tname[32] = "mytheme";
+    char about[64] = "custom";
+
+    if (name && *name) {
+        snprintf(tname, sizeof tname, "%s", name);
+        if (theme_lookup(name, &t) != 0) {
+            fprintf(stderr, "theme: no theme called %s to start from\n", name);
+            return 1;
+        }
+    } else {
+        theme_lookup("classic", &t);
+    }
+
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, 1);
+    curs_set(0);
+    start_color();
+    for (short i = 0; i < 8; i++) init_pair((short)(1 + i), i, COLOR_BLACK);
+
+    int sel = 0, chan = 0, dirty = 0;
+    theme_t live = t;
+    theme_apply_live(&live);
+
+    for (;;) {
+        int rows = getmaxy(stdscr), cols = getmaxx(stdscr);
+        erase();
+
+        attron(A_BOLD);
+        mvprintw(0, 2, "theme editor");
+        attroff(A_BOLD);
+        mvprintw(0, 16, "%s%s", tname, dirty ? "  (unsaved)" : "");
+
+        for (int i = 0; i < 18; i++) {
+            int y = 2 + i;
+            if (y >= rows - 3) break;
+            uint32_t c = *slot_ptr(&t, i);
+            if (i == sel) attron(A_REVERSE);
+            mvprintw(y, 2, " %-11s ", SLOT_NAME[i]);
+            if (i == sel) attroff(A_REVERSE);
+            draw_slot_swatch(y, 16, i, 6);
+            mvprintw(y, 24, "#%06X   R %3u  G %3u  B %3u",
+                     c, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+            if (i == sel) {
+                int cx = 24 + 11 + chan * 9;
+                mvprintw(y, cx - 2, ">");
+            }
+        }
+
+        int py = 2;
+        int px = cols - 30;
+        if (px > 62) {
+            attron(A_BOLD);
+            mvprintw(py, px, "live preview");
+            attroff(A_BOLD);
+            mvprintw(py + 1, px, "the console is already");
+            mvprintw(py + 2, px, "using what you edit");
+
+            for (int i = 0; i < 8; i++) {
+                draw_slot_swatch(py + 4 + i, px, i, 4);
+                draw_slot_swatch(py + 4 + i, px + 5, i + 8, 4);
+            }
+
+            mvprintw(py + 13, px, "sample:");
+            attron(COLOR_PAIR(1 + 2));
+            mvprintw(py + 14, px, "root");
+            attroff(COLOR_PAIR(1 + 2));
+            printw(":");
+            attron(COLOR_PAIR(1 + 4) | A_BOLD);
+            printw("~");
+            attroff(COLOR_PAIR(1 + 4) | A_BOLD);
+            printw("# ls");
+            attron(A_REVERSE);
+            mvprintw(py + 16, px, " reversed text ");
+            attroff(A_REVERSE);
+        }
+
+        attron(A_REVERSE);
+        mvprintw(rows - 1, 0, " up/down slot  left/right channel  -/+ adjust  "
+                              "h hex  n name  s save  q quit ");
+        attroff(A_REVERSE);
+        refresh();
+
+        int ch = getch();
+        uint32_t *c = slot_ptr(&t, sel);
+        int shift = (2 - chan) * 8;
+        int val = (int)((*c >> shift) & 0xFF);
+
+        if (ch == KEY_UP)         { if (sel > 0) sel--; }
+        else if (ch == KEY_DOWN)  { if (sel < 17) sel++; }
+        else if (ch == KEY_LEFT)  { if (chan > 0) chan--; }
+        else if (ch == KEY_RIGHT) { if (chan < 2) chan++; }
+        else if (ch == '-' || ch == '_') {
+            val -= (ch == '_') ? 16 : 1;
+            if (val < 0) val = 0;
+            *c = (*c & ~(0xFFu << shift)) | ((uint32_t)val << shift);
+            dirty = 1; live = t; theme_apply_live(&live);
+        }
+        else if (ch == '+' || ch == '=') {
+            val += (ch == '+') ? 16 : 1;
+            if (val > 255) val = 255;
+            *c = (*c & ~(0xFFu << shift)) | ((uint32_t)val << shift);
+            dirty = 1; live = t; theme_apply_live(&live);
+        }
+        else if (ch == 'h' || ch == 'H') {
+            char buf[16];
+            if (prompt_line("colour #RRGGBB:", buf, sizeof buf) > 0) {
+                uint32_t v;
+                if (parse_hex(buf, &v) == 0) {
+                    *c = v; dirty = 1; live = t; theme_apply_live(&live);
+                }
+            }
+        }
+        else if (ch == 'n' || ch == 'N') {
+            char buf[32];
+            if (prompt_line("theme name:", buf, sizeof buf) > 0) {
+                snprintf(tname, sizeof tname, "%s", buf);
+                dirty = 1;
+            }
+        }
+        else if (ch == 's' || ch == 'S') {
+            char buf[64];
+            if (prompt_line("description:", buf, sizeof buf) >= 0) {
+                if (buf[0]) snprintf(about, sizeof about, "%s", buf);
+                if (save_theme(tname, &t, about) == 0) dirty = 0;
+            }
+        }
+        else if (ch == 'q' || ch == 'Q' || ch == 27) break;
+    }
+
+    endwin();
+    if (dirty)
+        printf("theme: %s was not saved\n", tname);
+    else
+        printf("theme: saved as %s; run 'theme %s' to use it\n", tname, tname);
     return 0;
 }

@@ -26,6 +26,21 @@ DESCRIPTION
        they were written with, so leaving the old ones in place would
        show half the screen in the previous palette.
 
+MAKING YOUR OWN
+       theme edit [name] opens a full-screen editor, starting from an
+       existing scheme when one is named. Up and down choose which of
+       the eighteen colours to work on - sixteen palette entries plus
+       the default text and background - left and right choose the red,
+       green or blue channel, and - and + adjust it, by sixteen with
+       the shifted pair. h types a value as #RRGGBB, n sets the name
+       and s saves.
+
+       The console follows every change as it is made, so the editor's
+       own colours are the preview.
+
+       Themes are written to /etc/themes as plain text and appear in
+       the listing beside the built-in ones, marked custom.
+
 SCHEMES
        classic      the VGA palette the console started with
        cervus       soft slate, meant for long sessions
@@ -43,7 +58,8 @@ SCHEMES
        mono         grey scale
 
 FILES
-       /etc/console.conf
+       /etc/console.conf   the chosen scheme, restored at boot
+       /etc/themes/*.theme custom schemes
 
 SEE ALSO
        setfont(1), mode(1), csh(1)
