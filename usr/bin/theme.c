@@ -402,10 +402,11 @@ static void draw_slot_swatch(int y, int x, int slot, int width) {
     attroff(a);
 }
 
-static int prompt_line(const char *label, char *buf, int cap) {
+static int prompt_seeded(const char *label, char *buf, int cap, const char *seed) {
     int y = 1;
     int n = 0;
     buf[0] = 0;
+    if (seed && seed[0]) { buf[0] = seed[0]; buf[1] = 0; n = 1; }
 
     for (;;) {
         move(y, 0);
@@ -439,6 +440,10 @@ static int prompt_line(const char *label, char *buf, int cap) {
     clrtoeol();
     refresh();
     return n;
+}
+
+static int prompt_line(const char *label, char *buf, int cap) {
+    return prompt_seeded(label, buf, cap, NULL);
 }
 
 int theme_editor(const char *name) {
@@ -587,6 +592,23 @@ int theme_editor(const char *name) {
             if (val > 255) val = 255;
             *c = (*c & ~(0xFFu << shift)) | ((uint32_t)val << shift);
             dirty = 1; live = t; theme_apply_live(&live);
+        }
+        else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER ||
+                 (ch >= '0' && ch <= '9')) {
+            char first[2] = { 0, 0 };
+            if (ch >= '0' && ch <= '9') first[0] = (char)ch;
+            char buf[8];
+            static const char *CHNAME[3] = { "red", "green", "blue" };
+            char label[48];
+            snprintf(label, sizeof label, "%s of %s (0-255):",
+                     CHNAME[chan], SLOT_NAME[sel]);
+            if (prompt_seeded(label, buf, sizeof buf, first) > 0) {
+                int v = atoi(buf);
+                if (v < 0) v = 0;
+                if (v > 255) v = 255;
+                *c = (*c & ~(0xFFu << shift)) | ((uint32_t)v << shift);
+                dirty = 1; live = t; theme_apply_live(&live);
+            }
         }
         else if (ch == 'h' || ch == 'H') {
             char buf[16];

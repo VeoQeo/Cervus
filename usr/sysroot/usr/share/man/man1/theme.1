@@ -28,12 +28,20 @@ DESCRIPTION
 
 MAKING YOUR OWN
        theme edit [name] opens a full-screen editor, starting from an
-       existing scheme when one is named. Up and down choose which of
-       the eighteen colours to work on - sixteen palette entries plus
-       the default text and background - left and right choose the red,
-       green or blue channel, and - and + adjust it, by sixteen with
-       the shifted pair. h types a value as #RRGGBB, n sets the name
-       and s saves.
+       existing scheme when one is named.
+
+       Up and down choose which of the eighteen colours to work on -
+       sixteen palette entries plus the default text and background -
+       and left and right choose the red, green or blue channel. Each
+       colour is listed with what it is used for, so the one to change
+       can be found by reading rather than by trying.
+
+       The chosen channel can be set three ways: - and + step it by
+       one, _ and = by sixteen, and Enter or any digit types the number
+       outright. h takes the whole colour at once as #RRGGBB.
+
+       n names the scheme and s saves it. A panel at the foot repeats
+       all of this, along with the colour being edited and its value.
 
        The console follows every change as it is made, so the editor's
        own colours are the preview.
